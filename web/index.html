@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>BECS OS</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23205e5a'/%3E%3Cpath d='M9 22V10h7a3.5 3.5 0 0 1 1 6.8A3.6 3.6 0 0 1 16.5 22zm3-7h3.5a1 1 0 0 0 0-2H12zm0 5h4a1.2 1.2 0 0 0 0-2.4H12z' fill='%23fff'/%3E%3C/svg%3E">
+<style>
+:root {
+  --bg: #f6f5f1; --surface: #ffffff; --ink: #1f2623; --muted: #66706b; --line: #e3e1da;
+  --accent: #205e5a; --accent-ink: #ffffff; --warn: #a3321f; --warn-bg: #fbeae6;
+  --ok: #2f6b3a; --ok-bg: #e5f1e6; --chip: #eeece5; --bar: #205e5a; --bar-bg: #e7e5dd;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #131816; --surface: #1c2320; --ink: #e9ece9; --muted: #98a39d; --line: #2b3430;
+    --accent: #5fb3aa; --accent-ink: #0f1a18; --warn: #f0a595; --warn-bg: #3a1f1a;
+    --ok: #8fd09a; --ok-bg: #1d3322; --chip: #26302c; --bar: #5fb3aa; --bar-bg: #2b3430;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #131816; --surface: #1c2320; --ink: #e9ece9; --muted: #98a39d; --line: #2b3430;
+  --accent: #5fb3aa; --accent-ink: #0f1a18; --warn: #f0a595; --warn-bg: #3a1f1a;
+  --ok: #8fd09a; --ok-bg: #1d3322; --chip: #26302c; --bar: #5fb3aa; --bar-bg: #2b3430;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.wrap { max-width: 1040px; margin: 0 auto; padding: 0 16px 48px; }
+header { display: flex; align-items: center; gap: 12px; padding: 16px 0 8px; flex-wrap: wrap; }
+header h1 { font-size: 18px; margin: 0; letter-spacing: .2px; }
+nav { display: flex; gap: 4px; margin-left: 8px; flex: 1; flex-wrap: wrap; }
+nav button, .btn { font: inherit; border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: 7px 14px; border-radius: 8px; cursor: pointer; }
+nav button[aria-current="page"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn.small { padding: 3px 10px; font-size: 13px; }
+.btn:disabled { opacity: .55; cursor: default; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.muted { color: var(--muted); }
+.grid { display: grid; gap: 12px; }
+.tiles { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin: 12px 0; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+.tile .n { font-size: 30px; font-weight: 650; line-height: 1.1; }
+.tile .l { color: var(--muted); font-size: 13px; }
+.tile.warn .n { color: var(--warn); }
+.cols { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+h2 { font-size: 14px; margin: 0 0 10px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); font-weight: 600; }
+.bar-row { display: grid; grid-template-columns: 110px 1fr 28px; align-items: center; gap: 8px; margin: 6px 0; font-size: 14px; }
+.bar { height: 8px; background: var(--bar-bg); border-radius: 4px; overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--bar); border-radius: 4px; }
+.toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; align-items: center; }
+select, input, textarea { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; max-width: 100%; }
+.tablewrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); font-weight: 600; background: var(--surface); }
+tr:last-child td { border-bottom: 0; }
+tr.done td { color: var(--muted); text-decoration: line-through; }
+.chip { display: inline-block; padding: 1px 9px; border-radius: 999px; background: var(--chip); font-size: 12px; white-space: nowrap; }
+.chip.p1 { background: var(--warn-bg); color: var(--warn); }
+.chip.od { background: var(--warn-bg); color: var(--warn); }
+.chip.ok { background: var(--ok-bg); color: var(--ok); }
+form.add { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); margin-bottom: 14px; }
+form.add .full { grid-column: 1 / -1; }
+.gate { max-width: 440px; margin: 12vh auto 0; }
+.gate input { width: 100%; margin: 8px 0 12px; }
+.msg { padding: 9px 12px; border-radius: 8px; margin: 10px 0; font-size: 14px; }
+.msg.err { background: var(--warn-bg); color: var(--warn); }
+.msg.info { background: var(--chip); }
+.empty { padding: 22px; text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+
+<script>
+'use strict';
+// The API is read from the page's own config so the same file works anywhere.
+const API = 'https://becs-os-api.be-consulting-solutions.workers.dev';
+const KEY_STORE = 'becs-os-key';
+const STAGES = ['lead', 'contacted', 'proposal', 'active', 'won', 'lost', 'dormant'];
+const TAGS = ['revenue', 'systems', 'workload'];
+const STATUSES = ['todo', 'doing', 'done'];
+
+const store = {
+  get() { try { return localStorage.getItem(KEY_STORE) || ''; } catch { return ''; } },
+  set(v) { try { localStorage.setItem(KEY_STORE, v); } catch { /* storage blocked: key lasts this tab only */ } mem = v; },
+  clear() { try { localStorage.removeItem(KEY_STORE); } catch {} mem = ''; },
+};
+let mem = '';
+const getKey = () => mem || (mem = store.get());
+
+const state = { tab: 'dashboard', ventures: [], clients: [], tasks: [], dash: null,
+  f: { venture: '', tag: '', status: 'open', stage: '' }, error: '', info: '' };
+
+// --- tiny DOM helper (text only, never innerHTML, so API data can't inject markup) ---
+function h(tag, attrs, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === 'class') el.className = v;
+    else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+    else if (v === true) el.setAttribute(k, '');
+    else if (v !== false && v != null) el.setAttribute(k, v);
+  }
+  for (const kid of kids.flat()) if (kid != null && kid !== false) el.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
+  return el;
+}
+
+class AuthError extends Error {}
+async function api(method, path, body) {
+  const res = await fetch(API + path, {
+    method,
+    headers: { Authorization: 'Bearer ' + getKey(), ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (res.status === 401) throw new AuthError('That key was not accepted.');
+  if (res.status === 403) throw new Error('This key is not allowed to do that (missing scope).');
+  if (res.status === 429) throw new Error('Too many requests. Wait a minute and try again.');
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Request failed (' + res.status + ')');
+  return data;
+}
+
+async function load() {
+  state.error = '';
+  try {
+    const [v, c, t, d] = await Promise.all([
+      api('GET', '/ventures'), api('GET', '/clients?limit=500'), api('GET', '/tasks?limit=500'), api('GET', '/dashboard'),
+    ]);
+    state.ventures = v.data; state.clients = c.data; state.tasks = t.data; state.dash = d;
+  } catch (e) {
+    if (e instanceof AuthError) { store.clear(); state.error = e.message; } else state.error = e.message;
+  }
+  render();
+}
+
+const ventureName = (id) => (state.ventures.find((v) => v.id === id) || {}).slug || '—';
+const today = () => new Date().toISOString().slice(0, 10);
+const isOverdue = (t) => t.status !== 'done' && t.due_date && t.due_date < today();
+
+async function act(fn, okMsg) {
+  state.error = ''; state.info = '';
+  try { await fn(); state.info = okMsg || ''; await load(); }
+  catch (e) { state.error = e.message; render(); }
+}
+
+// --- views ---
+function gate() {
+  const input = h('input', { type: 'password', placeholder: 'Paste your app key', autocomplete: 'off', 'aria-label': 'App key' });
+  const go = (ev) => { ev.preventDefault(); if (!input.value.trim()) return; store.set(input.value.trim()); load(); };
+  return h('div', { class: 'gate card' },
+    h('h1', { style: 'font-size:20px;margin:0 0 6px' }, 'BECS OS'),
+    h('p', { class: 'muted', style: 'margin:0 0 8px' }, 'Enter an app key to continue. It is kept in this browser only, never in the page code.'),
+    state.error && h('div', { class: 'msg err', role: 'alert' }, state.error),
+    h('form', { onsubmit: go }, input, h('button', { class: 'btn primary', type: 'submit' }, 'Unlock')));
+}
+
+function bars(rows, labelKey, valKey) {
+  const max = Math.max(1, ...rows.map((r) => r[valKey]));
+  return rows.length ? rows.map((r) => h('div', { class: 'bar-row' },
+    h('span', {}, r[labelKey]), h('div', { class: 'bar' }, h('i', { style: 'width:' + Math.round((r[valKey] / max) * 100) + '%' })), h('span', { class: 'muted' }, r[valKey])))
+    : h('div', { class: 'empty' }, 'Nothing yet');
+}
+
+function dashboardView() {
+  const d = state.dash; if (!d) return h('div', { class: 'empty' }, 'Loading…');
+  const leads = (d.client_pipeline.find((p) => p.stage === 'lead') || { n: 0 }).n;
+  const totalClients = d.client_pipeline.reduce((s, p) => s + p.n, 0);
+  const upcoming = state.tasks.filter((t) => t.status !== 'done').sort((a, b) => (a.due_date || '9').localeCompare(b.due_date || '9') || a.priority - b.priority).slice(0, 6);
+  return h('div', {},
+    h('div', { class: 'grid tiles' },
+      h('div', { class: 'card tile' }, h('div', { class: 'n' }, d.open_tasks), h('div', { class: 'l' }, 'Open tasks')),
+      h('div', { class: 'card tile' + (d.overdue.length ? ' warn' : '') }, h('div', { class: 'n' }, d.overdue.length), h('div', { class: 'l' }, 'Overdue')),
+      h('div', { class: 'card tile' }, h('div', { class: 'n' }, totalClients), h('div', { class: 'l' }, 'Clients')),
+      h('div', { class: 'card tile' }, h('div', { class: 'n' }, leads), h('div', { class: 'l' }, 'Leads'))),
+    h('div', { class: 'grid cols' },
+      h('div', { class: 'card' }, h('h2', {}, 'Open tasks by venture'), bars(d.open_tasks_by_venture.filter((v) => v.open_tasks > 0), 'slug', 'open_tasks')),
+      h('div', { class: 'card' }, h('h2', {}, 'Client pipeline'), bars(d.client_pipeline, 'stage', 'n'))),
+    h('div', { class: 'card', style: 'margin-top:12px' }, h('h2', {}, 'Next up'),
+      upcoming.length ? h('div', { class: 'tablewrap' }, h('table', {}, h('tbody', {}, upcoming.map(taskRow)))) : h('div', { class: 'empty' }, 'No open tasks')));
+}
+
+function taskRow(t) {
+  return h('tr', { class: t.status === 'done' ? 'done' : '' },
+    h('td', {}, h('span', { class: 'chip' + (t.priority === 1 ? ' p1' : '') }, 'P' + t.priority)),
+    h('td', {}, t.title),
+    h('td', {}, h('span', { class: 'chip' }, ventureName(t.venture_id))),
+    h('td', {}, t.filter_tag ? h('span', { class: 'chip' }, t.filter_tag) : ''),
+    h('td', {}, t.due_date || '', isOverdue(t) ? [' ', h('span', { class: 'chip od' }, 'overdue')] : ''),
+    h('td', {}, t.status !== 'done' && h('button', { class: 'btn small', onclick: () => act(() => api('PATCH', '/tasks/' + t.id, { status: 'done' }), 'Marked done.') }, 'Done')));
+}
+
+function select(options, value, onchange, label, any) {
+  const s = h('select', { 'aria-label': label, onchange: (e) => onchange(e.target.value) },
+    any != null && h('option', { value: '' }, any), options.map(([v, l]) => h('option', { value: v, selected: v === value }, l)));
+  return s;
+}
+
+function tasksView() {
+  const f = state.f;
+  const rows = state.tasks.filter((t) =>
+    (!f.venture || String(t.venture_id) === f.venture) && (!f.tag || t.filter_tag === f.tag) &&
+    (f.status === 'all' || (f.status === 'open' ? t.status !== 'done' : t.status === f.status)))
+    .sort((a, b) => (a.due_date || '9').localeCompare(b.due_date || '9') || a.priority - b.priority);
+  const vopts = state.ventures.map((v) => [String(v.id), v.slug]);
+  const form = h('form', { class: 'add', onsubmit: (e) => {
+    e.preventDefault(); const fd = new FormData(e.target);
+    const body = { title: fd.get('title').trim(), venture_id: Number(fd.get('venture')), priority: Number(fd.get('priority')),
+      filter_tag: fd.get('tag') || null, due_date: fd.get('due') || null };
+    if (!body.title) return; act(() => api('POST', '/tasks', body), 'Task added.');
+  } },
+    h('input', { name: 'title', class: 'full', placeholder: 'New task title', 'aria-label': 'Task title', required: true }),
+    h('select', { name: 'venture', 'aria-label': 'Venture' }, vopts.map(([v, l]) => h('option', { value: v }, l))),
+    h('select', { name: 'priority', 'aria-label': 'Priority' }, [1, 2, 3].map((p) => h('option', { value: p, selected: p === 2 }, 'Priority ' + p))),
+    h('select', { name: 'tag', 'aria-label': 'Tag' }, h('option', { value: '' }, 'No tag'), TAGS.map((t) => h('option', { value: t }, t))),
+    h('input', { name: 'due', type: 'date', 'aria-label': 'Due date' }),
+    h('button', { class: 'btn primary', type: 'submit' }, 'Add task'));
+  return h('div', {}, h('div', { class: 'card' }, form),
+    h('div', { class: 'toolbar' },
+      select(vopts, f.venture, (v) => { f.venture = v; render(); }, 'Filter by venture', 'All ventures'),
+      select(TAGS.map((t) => [t, t]), f.tag, (v) => { f.tag = v; render(); }, 'Filter by tag', 'All tags'),
+      select([['open', 'Open'], ['all', 'All'], ['done', 'Done']], f.status, (v) => { f.status = v; render(); }, 'Filter by status'),
+      h('span', { class: 'muted' }, rows.length + ' shown')),
+    rows.length ? h('div', { class: 'tablewrap' }, h('table', {},
+      h('thead', {}, h('tr', {}, ['Pri', 'Task', 'Venture', 'Tag', 'Due', ''].map((c) => h('th', {}, c)))),
+      h('tbody', {}, rows.map(taskRow)))) : h('div', { class: 'card empty' }, 'No tasks match.'));
+}
+
+function clientsView() {
+  const f = state.f;
+  const rows = state.clients.filter((c) => (!f.venture || String(c.venture_id) === f.venture) && (!f.stage || c.stage === f.stage));
+  const vopts = state.ventures.map((v) => [String(v.id), v.slug]);
+  const form = h('form', { class: 'add', onsubmit: (e) => {
+    e.preventDefault(); const fd = new FormData(e.target);
+    const body = { name: fd.get('name').trim(), venture_id: Number(fd.get('venture')), stage: 'lead', source: fd.get('source').trim() || null, notes: fd.get('notes').trim() || null };
+    if (!body.name) return; act(() => api('POST', '/clients', body), 'Client added.');
+  } },
+    h('input', { name: 'name', placeholder: 'Client name', 'aria-label': 'Client name', required: true }),
+    h('select', { name: 'venture', 'aria-label': 'Venture' }, vopts.map(([v, l]) => h('option', { value: v }, l))),
+    h('input', { name: 'source', placeholder: 'Source (Gmail, Warm…)', 'aria-label': 'Source' }),
+    h('input', { name: 'notes', class: 'full', placeholder: 'Notes', 'aria-label': 'Notes' }),
+    h('button', { class: 'btn primary', type: 'submit' }, 'Add client'));
+  return h('div', {}, h('div', { class: 'card' }, form),
+    h('div', { class: 'toolbar' },
+      select(vopts, f.venture, (v) => { f.venture = v; render(); }, 'Filter by venture', 'All ventures'),
+      select(STAGES.map((s) => [s, s]), f.stage, (v) => { f.stage = v; render(); }, 'Filter by stage', 'All stages'),
+      h('span', { class: 'muted' }, rows.length + ' shown')),
+    rows.length ? h('div', { class: 'tablewrap' }, h('table', {},
+      h('thead', {}, h('tr', {}, ['Client', 'Venture', 'Stage', 'Source', 'Notes'].map((c) => h('th', {}, c)))),
+      h('tbody', {}, rows.map((c) => h('tr', {},
+        h('td', {}, c.name), h('td', {}, h('span', { class: 'chip' }, ventureName(c.venture_id))),
+        h('td', {}, h('select', { 'aria-label': 'Stage for ' + c.name, onchange: (e) => act(() => api('PATCH', '/clients/' + c.id, { stage: e.target.value }), 'Stage updated.') },
+          (STAGES.includes(c.stage) ? STAGES : [c.stage, ...STAGES]).map((s) => h('option', { value: s, selected: s === c.stage }, s)))),
+        h('td', {}, c.source || ''), h('td', { class: 'muted' }, c.notes || '')))))) : h('div', { class: 'card empty' }, 'No clients match.'));
+}
+
+function render() {
+  const root = document.getElementById('app');
+  root.replaceChildren();
+  if (!getKey()) { root.append(gate()); return; }
+  const tabs = [['dashboard', 'Dashboard'], ['tasks', 'Tasks'], ['clients', 'Clients']];
+  root.append(
+    h('header', {}, h('h1', {}, 'BECS OS'),
+      h('nav', {}, tabs.map(([k, l]) => h('button', { 'aria-current': state.tab === k ? 'page' : null, onclick: () => { state.tab = k; state.info = ''; render(); } }, l))),
+      h('button', { class: 'btn small', onclick: load }, 'Refresh'),
+      h('button', { class: 'btn small', onclick: () => { store.clear(); state.dash = null; render(); } }, 'Lock')),
+    state.error && h('div', { class: 'msg err', role: 'alert' }, state.error),
+    state.info && h('div', { class: 'msg info', role: 'status' }, state.info),
+    state.tab === 'dashboard' ? dashboardView() : state.tab === 'tasks' ? tasksView() : clientsView());
+}
+
+render();
+if (getKey()) load();
+</script>
+</body>
+</html>

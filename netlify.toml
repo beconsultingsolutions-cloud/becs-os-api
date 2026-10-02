@@ -1,0 +1,12 @@
+# Static front end: no build step, Netlify serves the web/ folder as-is.
+[build]
+  publish = "web"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+    Referrer-Policy = "no-referrer"
+    Cache-Control = "no-cache"
+    Content-Security-Policy = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src https://becs-os-api.be-consulting-solutions.workers.dev; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
