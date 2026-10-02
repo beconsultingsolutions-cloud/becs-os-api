@@ -1,0 +1,19 @@
+{
+  "name": "becs-os-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "observability": { "enabled": true },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "becs-os-core",
+      "database_id": "fab9e141-867f-46bd-bfaf-75d9c3b0191b"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "CONFIG",
+      "id": "2d7e6ec8dcdf42168a74609d1d8e0edf"
+    }
+  ]
+}
