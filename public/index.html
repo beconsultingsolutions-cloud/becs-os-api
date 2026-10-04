@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>BECS OS</title>
+<style>
+  :root { --bg:#0f1115; --card:#181b22; --line:#262a34; --text:#e8eaf0; --mute:#8b92a5; --accent:#6aa9ff; --bad:#ff6b6b; --ok:#4cd39a; }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#f5f6f9; --card:#fff; --line:#e0e3ea; --text:#161a23; --mute:#5d6577; --accent:#1f6feb; --bad:#d1242f; --ok:#1a7f55; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.45 system-ui,-apple-system,Segoe UI,sans-serif; }
+  header { display:flex; align-items:center; gap:12px; padding:14px 16px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  header h1 { font-size:17px; margin:0; letter-spacing:.5px; }
+  nav { display:flex; gap:6px; flex:1; flex-wrap:wrap; }
+  button { font:inherit; color:var(--text); background:var(--card); border:1px solid var(--line); border-radius:8px; padding:7px 12px; cursor:pointer; }
+  button.on, button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  main { max-width:960px; margin:0 auto; padding:16px; }
+  .grid { display:grid; gap:12px; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); margin-bottom:16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; }
+  .stat b { display:block; font-size:28px; }
+  .mute { color:var(--mute); font-size:13px; }
+  h2 { font-size:15px; margin:20px 0 8px; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--mute); font-weight:500; font-size:12px; text-transform:uppercase; }
+  .tag { display:inline-block; font-size:12px; padding:1px 8px; border-radius:99px; border:1px solid var(--line); color:var(--mute); }
+  .bad { color:var(--bad); } .ok { color:var(--ok); }
+  .bar { height:8px; background:var(--accent); border-radius:4px; min-width:2px; }
+  #login { max-width:360px; margin:15vh auto; }
+  input { width:100%; font:inherit; padding:9px 10px; margin:10px 0; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--text); }
+  .err { color:var(--bad); min-height:1.4em; }
+  .scroll { overflow-x:auto; }
+</style>
+</head>
+<body>
+<div id="login" class="card" hidden>
+  <h1 style="margin-top:0">BECS OS</h1>
+  <div class="mute">Enter your read-only app key. It stays in this browser tab only and is cleared when you close it.</div>
+  <input id="key" type="password" placeholder="App key" autocomplete="off">
+  <button id="go" class="primary">Sign in</button>
+  <div id="loginErr" class="err"></div>
+</div>
+
+<div id="app" hidden>
+  <header>
+    <h1>BECS OS</h1>
+    <nav id="tabs"></nav>
+    <button id="refresh">Refresh</button>
+    <button id="out">Sign out</button>
+  </header>
+  <main id="view"></main>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const store = { get: () => { try { return sessionStorage.getItem('becs_key') || ''; } catch { return ''; } },
+                set: (v) => { try { v ? sessionStorage.setItem('becs_key', v) : sessionStorage.removeItem('becs_key'); } catch {} } };
+
+// Build elements without innerHTML so API data can never inject markup.
+function el(tag, props = {}, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) k === 'class' ? (n.className = v) : n.setAttribute(k, v);
+  for (const k of kids.flat()) n.append(k instanceof Node ? k : document.createTextNode(k ?? ''));
+  return n;
+}
+
+async function api(path) {
+  const res = await fetch(path, { headers: { Authorization: 'Bearer ' + store.get() } });
+  if (res.status === 401) throw Object.assign(new Error('Invalid key'), { auth: true });
+  if (res.status === 403) throw new Error('This key lacks permission for ' + path.split('?')[0] + '. Reissue it with the needed read scope.');
+  if (res.status === 429) throw new Error('Rate limited. Wait a minute and refresh.');
+  if (!res.ok) throw new Error('Server error (' + res.status + ')');
+  return res.json();
+}
+
+const stat = (n, label, cls = '') => el('div', { class: 'card stat' }, el('b', { class: cls }, String(n)), el('span', { class: 'mute' }, label));
+const money = (c) => (c == null ? '' : '$' + (c / 100).toLocaleString(undefined, { maximumFractionDigits: 0 }));
+const table = (heads, rows, empty) =>
+  rows.length
+    ? el('div', { class: 'scroll' }, el('table', {}, el('tr', {}, heads.map((h) => el('th', {}, h))), rows.map((r) => el('tr', {}, r.map((c) => el('td', {}, c))))))
+    : el('div', { class: 'mute' }, empty);
+
+const state = { tab: 'Today', ventures: {} };
+const tabs = {
+  async Today() {
+    const [d, t] = await Promise.all([api('/dashboard'), api('/tasks?limit=500')]);
+    const open = t.data.filter((x) => x.status !== 'done').sort((a, b) => a.priority - b.priority || (a.due_date || '9').localeCompare(b.due_date || '9'));
+    return el('div', {},
+      el('div', { class: 'grid' }, stat(d.open_tasks, 'Open tasks'), stat(d.overdue.length, 'Overdue', d.overdue.length ? 'bad' : 'ok'),
+        stat(d.client_pipeline.reduce((s, p) => s + p.n, 0), 'Clients')),
+      el('h2', {}, 'Overdue'),
+      table(['Task', 'Due', 'Pri'], d.overdue.map((x) => [x.title, el('span', { class: 'bad' }, x.due_date), String(x.priority)]), 'Nothing overdue.'),
+      el('h2', {}, 'Open tasks by priority'),
+      table(['Task', 'Venture', 'Tag', 'Due', 'Pri'], open.slice(0, 50).map((x) => [x.title, state.ventures[x.venture_id] || '', x.filter_tag ? el('span', { class: 'tag' }, x.filter_tag) : '', x.due_date || '', String(x.priority)]), 'No open tasks.'));
+  },
+  async Ventures() {
+    const d = await api('/dashboard');
+    const max = Math.max(1, ...d.open_tasks_by_venture.map((v) => v.open_tasks));
+    return el('div', {}, el('h2', {}, 'Open tasks per venture'),
+      table(['Venture', 'Open', ''], d.open_tasks_by_venture.map((v) => [v.slug, String(v.open_tasks), el('div', { class: 'bar', style: 'width:' + Math.round((v.open_tasks / max) * 100) + '%' })]), 'No ventures.'));
+  },
+  async Pipeline() {
+    const [c] = await Promise.all([api('/clients?limit=500')]);
+    const stages = {};
+    for (const x of c.data) (stages[x.stage] ||= []).push(x);
+    const out = el('div', {});
+    const names = Object.keys(stages);
+    if (!names.length) out.append(el('div', { class: 'mute' }, 'No clients yet.'));
+    for (const s of names) {
+      out.append(el('h2', {}, s + ' (' + stages[s].length + ')'),
+        table(['Client', 'Venture', 'Contact', 'Source'], stages[s].map((x) => [x.name, state.ventures[x.venture_id] || '', x.contact_name || '', x.source || '']), ''));
+    }
+    return out;
+  },
+  async Projects() {
+    const p = await api('/projects?limit=500');
+    const total = p.data.filter((x) => x.status !== 'done' && x.status !== 'cancelled').reduce((s, x) => s + (x.value_cents || 0), 0);
+    return el('div', {}, el('div', { class: 'grid' }, stat(money(total), 'Active project value')),
+      table(['Project', 'Venture', 'Status', 'Due', 'Value'], p.data.map((x) => [x.name, state.ventures[x.venture_id] || '', el('span', { class: 'tag' }, x.status), x.due_date || '', money(x.value_cents)]), 'No projects yet.'));
+  },
+};
+
+async function render() {
+  const view = $('view');
+  view.replaceChildren(el('div', { class: 'mute' }, 'Loading...'));
+  try {
+    if (!Object.keys(state.ventures).length) {
+      try { for (const v of (await api('/ventures')).data) state.ventures[v.id] = v.slug; } catch (e) { if (e.auth) throw e; }
+    }
+    view.replaceChildren(await tabs[state.tab]());
+  } catch (e) {
+    if (e.auth) return signOut('Invalid key. Try again.');
+    view.replaceChildren(el('div', { class: 'card bad' }, e.message));
+  }
+}
+
+function buildTabs() {
+  $('tabs').replaceChildren(...Object.keys(tabs).map((t) => {
+    const b = el('button', { class: t === state.tab ? 'on' : '' }, t);
+    b.onclick = () => { state.tab = t; buildTabs(); render(); };
+    return b;
+  }));
+}
+
+function signOut(msg = '') { store.set(''); state.ventures = {}; $('app').hidden = true; $('login').hidden = false; $('key').value = ''; $('loginErr').textContent = msg; }
+function enter() { $('login').hidden = true; $('app').hidden = false; buildTabs(); render(); }
+
+$('go').onclick = () => { const k = $('key').value.trim(); if (!k) return; store.set(k); enter(); };
+$('key').onkeydown = (e) => { if (e.key === 'Enter') $('go').click(); };
+$('refresh').onclick = render;
+$('out').onclick = () => signOut();
+store.get() ? enter() : signOut();
+</script>
+</body>
+</html>
