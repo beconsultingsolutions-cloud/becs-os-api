@@ -1,158 +1,1696 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
+<meta name="theme-color" content="#2D2A5F">
 <title>BECS OS</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232D2A5F'/%3E%3Crect x='9' y='20' width='14' height='3' fill='%238DC63F'/%3E%3Crect x='9' y='25' width='14' height='3' fill='%238DC63F'/%3E%3Ctext x='9' y='19' font-family='Impact,sans-serif' font-size='17' fill='%23F4F7E9'%3EB%3C/text%3E%3C/svg%3E">
+<link rel="preload" href="fonts/dm-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/bebas-neue-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+
+<!--
+=====================================================================
+BECS OS CONSOLE  -  how this file is organised
+---------------------------------------------------------------------
+One file, no build step, no outside scripts. Open it in any editor.
+
+  1. <style>        Fonts (self-hosted in /fonts), BECS brand tokens,
+                    then components: buttons, cards, pills, tables,
+                    task list, P.E.S. strip, dialogs, mobile layout.
+  2. <body>         Static skeleton only: the sign-in "gate", the app
+                    shell (navy rail + top bar + <main>), two dialogs,
+                    the toast, and an SVG icon sprite.
+  3. <script>       Numbered sections, top to bottom:
+       1  Settings and the allowed values (enums) from docs/SPEC.md
+       2  Helpers: building page elements safely, dates, money
+       3  API layer: every request to /api goes through api()
+       4  Sign-in: /api/me, key box, lock / sign out
+       5  Ventures and the venture switcher
+       6  Shared pieces: toast, confirm box, error panels
+       7  The form dialog used for every create / edit
+       8  Record forms: client, project, task
+       9  Screens: Overview, Clients, Projects, Tasks, Keys
+      10  Router and start-up
+
+Contract : docs/SPEC.md is the source of truth for paths, fields and
+           enums. If the API changes, change section 1 and the forms.
+Safety   : Page content is built with h() (section 2), which only ever
+           sets text, never HTML. Do not use innerHTML with API data:
+           notes are written by apps and AI agents and must stay text.
+Auth     : Cloudflare Access cookie first; otherwise a key typed into
+           the key box, kept in sessionStorage for this tab only.
+           No key is ever written into this file.
+=====================================================================
+-->
+
 <style>
-  :root { --bg:#0f1115; --card:#181b22; --line:#262a34; --text:#e8eaf0; --mute:#8b92a5; --accent:#6aa9ff; --bad:#ff6b6b; --ok:#4cd39a; }
-  @media (prefers-color-scheme: light) {
-    :root { --bg:#f5f6f9; --card:#fff; --line:#e0e3ea; --text:#161a23; --mute:#5d6577; --accent:#1f6feb; --bad:#d1242f; --ok:#1a7f55; }
-  }
-  * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.45 system-ui,-apple-system,Segoe UI,sans-serif; }
-  header { display:flex; align-items:center; gap:12px; padding:14px 16px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
-  header h1 { font-size:17px; margin:0; letter-spacing:.5px; }
-  nav { display:flex; gap:6px; flex:1; flex-wrap:wrap; }
-  button { font:inherit; color:var(--text); background:var(--card); border:1px solid var(--line); border-radius:8px; padding:7px 12px; cursor:pointer; }
-  button.on, button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
-  main { max-width:960px; margin:0 auto; padding:16px; }
-  .grid { display:grid; gap:12px; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); margin-bottom:16px; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; }
-  .stat b { display:block; font-size:28px; }
-  .mute { color:var(--mute); font-size:13px; }
-  h2 { font-size:15px; margin:20px 0 8px; }
-  table { width:100%; border-collapse:collapse; }
-  th, td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
-  th { color:var(--mute); font-weight:500; font-size:12px; text-transform:uppercase; }
-  .tag { display:inline-block; font-size:12px; padding:1px 8px; border-radius:99px; border:1px solid var(--line); color:var(--mute); }
-  .bad { color:var(--bad); } .ok { color:var(--ok); }
-  .bar { height:8px; background:var(--accent); border-radius:4px; min-width:2px; }
-  #login { max-width:360px; margin:15vh auto; }
-  input { width:100%; font:inherit; padding:9px 10px; margin:10px 0; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--text); }
-  .err { color:var(--bad); min-height:1.4em; }
-  .scroll { overflow-x:auto; }
+/* ---------- 1a. Fonts (self-hosted, latin subset, see fonts/OFL.txt) ---------- */
+@font-face{font-family:"Bebas Neue";font-style:normal;font-weight:400;font-display:swap;src:url(fonts/bebas-neue-latin-400-normal.woff2) format("woff2")}
+@font-face{font-family:"DM Sans";font-style:normal;font-weight:400;font-display:swap;src:url(fonts/dm-sans-latin-400-normal.woff2) format("woff2")}
+@font-face{font-family:"DM Sans";font-style:normal;font-weight:500;font-display:swap;src:url(fonts/dm-sans-latin-500-normal.woff2) format("woff2")}
+@font-face{font-family:"DM Sans";font-style:normal;font-weight:700;font-display:swap;src:url(fonts/dm-sans-latin-700-normal.woff2) format("woff2")}
+@font-face{font-family:"JetBrains Mono";font-style:normal;font-weight:400;font-display:swap;src:url(fonts/jetbrains-mono-latin-400-normal.woff2) format("woff2")}
+@font-face{font-family:"JetBrains Mono";font-style:normal;font-weight:500;font-display:swap;src:url(fonts/jetbrains-mono-latin-500-normal.woff2) format("woff2")}
+
+/* ---------- 1b. BECS tokens. Do not introduce new brand colors. ---------- */
+:root{
+  --cream:#F4F7E9;       /* Pale Cream: page base */
+  --cream-2:#E9EED7;     /* darker cream for tracks and columns */
+  --purple:#2B287E;      /* BE Purple: headings, primary ink */
+  --navy:#2D2A5F;        /* Midnight Navy: rail, borders, body ink */
+  --lime:#8DC63F;        /* Lime Green: accent (backgrounds only, never small text on cream) */
+  --lavender:#9B98D8;
+  --slate:#9BA9B6;
+  --indigo-soft:#3B3A8C;
+  --ink:#2D2A5F;
+  --ink-soft:#55537F;    /* secondary text, 6:1 on cream */
+  --line:#CFD6B8;        /* hairlines inside cards */
+  --card:#FDFEF8;
+  --danger:#B3261E;      /* overdue, delete, errors */
+  --danger-tint:#B3261E14;
+  --lime-tint:#8DC63F40;
+  --purple-tint:#2B287E14;
+  --radius:10px;
+  --display:"Bebas Neue","Arial Narrow",Impact,sans-serif;
+  --body:"DM Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--cream);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.5;min-height:100vh;overflow-x:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+button:disabled,select:disabled,input:disabled{cursor:not-allowed;opacity:.6}
+[hidden]{display:none!important}
+:focus-visible{outline:3px solid var(--purple);outline-offset:2px}
+.rail :focus-visible,.deep :focus-visible{outline-color:var(--lime)}
+.sr{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.ico{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* ---------- type ---------- */
+.eyebrow{font-family:var(--mono);font-size:.75rem;letter-spacing:.14em;text-transform:uppercase;color:var(--purple)}
+.eyebrow.lime{color:var(--lime)}
+.h1{font-family:var(--display);font-weight:400;font-size:clamp(2.4rem,6vw,3.6rem);line-height:.95;letter-spacing:.02em;color:var(--purple);text-transform:uppercase}
+.h2{font-family:var(--display);font-weight:400;font-size:1.75rem;line-height:1.05;letter-spacing:.03em;color:var(--navy);text-transform:uppercase}
+.h3{font-family:var(--display);font-weight:400;font-size:1.4rem;line-height:1.1;letter-spacing:.03em;color:var(--navy);text-transform:uppercase;overflow-wrap:anywhere}
+.lime-rule{width:3rem;height:4px;background:var(--lime);margin-top:.6rem}
+.muted{color:var(--ink-soft)}
+.mono{font-family:var(--mono);font-size:.78rem}
+.small{font-size:.875rem}
+.late{color:var(--danger);font-weight:700}
+
+/* ---------- 1c. Shell: navy rail + content column ---------- */
+.shell{display:grid;grid-template-columns:232px minmax(0,1fr);min-height:100vh;background:linear-gradient(90deg,var(--navy) 232px,transparent 232px)}   /* rail colour runs the full page height */
+.rail{background:var(--navy);color:var(--cream);padding:24px 14px;display:flex;flex-direction:column;gap:28px;position:sticky;top:0;height:100vh}
+.brand{display:flex;align-items:center;gap:12px;padding:0 8px;color:inherit;text-decoration:none}
+.brand svg{flex:none}
+.brand b{display:block;font-family:var(--display);font-weight:400;font-size:30px;letter-spacing:.04em;line-height:1}
+.brand small{display:block;font-family:var(--mono);font-size:10.5px;color:#C9C8E6;letter-spacing:.06em;margin-top:2px}
+.nav{display:flex;flex-direction:column;gap:4px}
+.nav a{display:flex;align-items:center;gap:12px;min-height:44px;padding:8px 12px;border-radius:8px;color:#DCDCF0;text-decoration:none;font-weight:500;border-left:4px solid transparent}
+.nav a:hover{background:rgba(244,247,233,.09);color:#fff}
+.nav a[aria-current="page"]{background:rgba(244,247,233,.13);color:#fff;border-left-color:var(--lime)}
+.rail-foot{margin-top:auto;font-family:var(--mono);font-size:11px;color:#C9C8E6;padding:0 8px;line-height:1.6}
+.rail-foot i{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--lime);margin-right:6px}
+
+.col-main{min-width:0;display:flex;flex-direction:column}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px clamp(16px,4vw,48px);border-bottom:2px solid var(--navy);background:var(--cream);position:sticky;top:0;z-index:15}
+.vpick{display:flex;align-items:center;gap:10px;min-width:0}
+.vpick label{font-family:var(--mono);font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-soft)}
+.vpick select{min-width:0;max-width:62vw;font-weight:700}
+.who{display:flex;align-items:center;gap:10px;min-width:0}
+.who .id{font-family:var(--mono);font-size:.78rem;color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px}
+main{padding:32px clamp(16px,4vw,48px) 80px;max-width:1240px;width:100%}
+main:focus{outline:none}
+
+/* ---------- section head (eyebrow, title, lime rule, intro) ---------- */
+.shead{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:24px}
+.shead .intro{margin-top:10px;max-width:56ch;color:var(--ink-soft)}
+.actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+
+/* ---------- 1d. Buttons. Only one .primary per screen. ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:2px solid var(--navy);background:transparent;color:var(--navy);padding:8px 16px;border-radius:8px;font-weight:700;min-height:44px;text-decoration:none;line-height:1.2;white-space:nowrap}
+.btn:hover:not(:disabled){background:var(--cream-2)}
+.btn.primary{background:var(--lime);color:var(--navy);box-shadow:4px 4px 0 var(--navy);transition:transform .08s,box-shadow .08s}
+.btn.primary:hover:not(:disabled){background:var(--lime);transform:translate(1px,1px);box-shadow:3px 3px 0 var(--navy)}
+.btn.primary:active:not(:disabled){transform:translate(4px,4px);box-shadow:0 0 0 var(--navy)}
+.btn.solid{background:var(--navy);color:var(--cream)}
+.btn.solid:hover:not(:disabled){background:var(--purple)}
+.btn.light{border-color:var(--cream);color:var(--cream)}
+.btn.light:hover:not(:disabled){background:rgba(244,247,233,.12)}
+.btn.danger{border-color:var(--danger);color:var(--danger)}
+.btn.danger:hover:not(:disabled){background:var(--danger-tint)}
+.btn.sm{min-height:36px;padding:4px 12px;font-size:.875rem}
+.btn.icon{padding:0;width:44px}
+.btn.sm.icon{width:36px}
+.linkbtn{background:none;border:0;padding:0;text-align:left;color:inherit;font-weight:700;text-decoration:none;overflow-wrap:anywhere}
+.linkbtn:hover{text-decoration:underline;text-decoration-thickness:2px;text-decoration-color:var(--lime)}
+@media (pointer:coarse){.btn.sm{min-height:44px}.btn.sm.icon{width:44px}}
+
+/* ---------- inputs ---------- */
+input,select,textarea{border:2px solid var(--navy);background:#fff;border-radius:8px;padding:8px 12px;min-height:44px;width:100%;font-size:1rem}
+textarea{min-height:110px;resize:vertical;line-height:1.45}
+select.inline{width:auto;min-height:36px;padding:4px 30px 4px 10px;font-size:.85rem;font-weight:500}
+@media (pointer:coarse){select.inline{min-height:44px}}
+input[aria-invalid="true"],select[aria-invalid="true"],textarea[aria-invalid="true"]{border-color:var(--danger);background:#FFF7F6}
+
+/* ---------- cards, panels ---------- */
+.panel{background:var(--card);border:2px solid var(--navy);border-radius:var(--radius)}
+.panel.pad{padding:20px}
+.block{margin-bottom:36px}
+.block>.h2{margin-bottom:12px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.block>.h2 .mono{color:var(--ink-soft);letter-spacing:.06em}
+.grid2{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:28px}
+@media (max-width:1000px){.grid2{grid-template-columns:minmax(0,1fr)}}
+.empty{padding:24px 20px;color:var(--ink-soft)}
+.empty b{display:block;color:var(--navy);margin-bottom:4px}
+.notice{border:2px solid var(--navy);border-left-width:8px;border-radius:var(--radius);background:var(--card);padding:16px 18px;margin-bottom:24px}
+.notice.err{border-color:var(--danger)}
+.notice b{display:block;margin-bottom:4px}
+.notice .actions{margin-top:12px}
+.loading{padding:28px 20px;font-family:var(--mono);font-size:.85rem;color:var(--ink-soft)}
+
+/* ---------- Overview: deep masthead + stat rail ---------- */
+.deep{background:linear-gradient(155deg,var(--purple),var(--navy) 62%,#211F4A);color:#fff;border-radius:14px;padding:28px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:flex-end;gap:20px;flex-wrap:wrap}
+.deep .h1{color:#fff;font-size:clamp(2.3rem,6vw,3.75rem)}
+.deep p{color:rgba(255,255,255,.78);max-width:36rem;margin-top:10px}
+.deep .btn.primary{box-shadow:4px 4px 0 #12112E}   /* navy shadow would vanish on the navy masthead */
+.deep .btn.primary:hover:not(:disabled){box-shadow:3px 3px 0 #12112E}
+.deep .pes{font-family:var(--mono);font-size:.72rem;letter-spacing:.28em;text-transform:uppercase;color:var(--lavender);margin-top:16px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));border:2px solid var(--navy);border-radius:var(--radius);background:var(--card);overflow:hidden;margin-bottom:36px}
+.stat{padding:16px 20px;border-right:2px solid var(--navy);min-width:0}
+.stat:last-child{border-right:0}
+.stat .n{display:block;font-family:var(--display);font-size:52px;line-height:1;color:var(--purple);overflow-wrap:anywhere}
+.stat .l{font-family:var(--mono);font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft)}
+.stat .s{font-family:var(--mono);font-size:.72rem;color:var(--ink-soft);display:block;margin-top:2px}
+.stat.alert .n{color:var(--danger)}
+.stat.alert{background:var(--danger-tint)}
+@media (max-width:760px){.stats{grid-template-columns:1fr 1fr}.stat{border-right:0;border-bottom:2px solid var(--navy)}.stat:nth-child(odd){border-right:2px solid var(--navy)}.stat:nth-last-child(-n+2):nth-child(odd),.stat:last-child{border-bottom:0}.stat:last-child:nth-child(odd){grid-column:1/-1;border-right:0}.stat .n{font-size:42px}}
+@media (prefers-reduced-motion:no-preference){@keyframes wipe{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}.stats.anim{animation:wipe .55s ease-out both}}
+
+/* bar list: client pipeline, tasks by venture */
+.bars{list-style:none;padding:6px 0}
+.bars a{display:grid;grid-template-columns:minmax(90px,11rem) minmax(0,1fr) 3ch;align-items:center;gap:12px;padding:6px 18px;min-height:40px;color:inherit;text-decoration:none}
+.bars a:hover{background:var(--cream-2)}
+.bars .lbl{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bars .track{height:14px;background:var(--cream-2);border:2px solid var(--navy);border-radius:99px;overflow:hidden}
+.bars .track i{display:block;height:100%;background:var(--lime)}
+.bars .num{font-family:var(--mono);font-size:.85rem;text-align:right}
+
+/* simple rows (activity feed, dashboard lists) */
+.rows{list-style:none;padding:0}
+.rows>li{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1.5px solid var(--line)}
+.rows>li:last-child{border-bottom:0}
+.grow{flex:1;min-width:0}
+.meta{font-family:var(--mono);font-size:.75rem;color:var(--ink-soft);overflow-wrap:anywhere}
+
+/* ---------- pills ---------- */
+.pill{display:inline-flex;align-items:center;font-family:var(--mono);font-size:.7rem;letter-spacing:.06em;text-transform:uppercase;padding:2px 9px;border-radius:99px;border:1.5px solid var(--slate);color:var(--ink-soft);background:transparent;white-space:nowrap;line-height:1.5}
+.pill.p1,.pill.late{border-color:var(--danger);color:var(--danger);background:var(--danger-tint)}
+.pill.p2,.pill.doing,.pill.contacted,.pill.proposal,.pill.planning{border-color:var(--purple);color:var(--purple);background:var(--purple-tint)}
+.pill.done,.pill.active{border-color:var(--navy);color:var(--navy);background:var(--lime-tint)}
+.pill.tag{border-color:var(--navy);color:var(--navy);background:var(--cream-2)}
+.pill.vent{border-color:var(--navy);color:var(--cream);background:var(--navy)}
+.pill.scope{text-transform:none;letter-spacing:0}
+
+/* ---------- filters bar ---------- */
+.filters{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:flex-end;margin-bottom:18px}
+.filters .f{display:flex;flex-direction:column;gap:4px;min-width:0}
+.filters .f>span,.filters .f>label{font-family:var(--mono);font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft)}
+.filters select,.filters input{width:auto;min-width:8.5rem;max-width:100%;min-height:40px;padding:6px 10px;font-size:.92rem}
+.filters input[type="search"]{min-width:12rem}
+.seg{display:inline-flex;flex-wrap:wrap;border:2px solid var(--navy);border-radius:8px;overflow:hidden;background:var(--card)}
+.seg button{border:0;border-right:2px solid var(--navy);background:transparent;padding:6px 12px;min-height:40px;font-weight:700;font-size:.875rem}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"]{background:var(--navy);color:var(--cream)}
+.seg button:hover:not([aria-pressed="true"]){background:var(--cream-2)}
+.seg .c{font-family:var(--mono);font-weight:400;font-size:.72rem;margin-left:5px;opacity:.85}
+@media (max-width:760px){
+  .filters .f{flex:1 1 9rem}
+  .filters .f.wide{flex-basis:100%}
+  .filters select,.filters input,.filters input[type="search"]{width:100%;min-width:0}
+  /* segmented filters stay on one row and scroll sideways inside themselves */
+  .seg{display:flex;flex-wrap:nowrap;overflow-x:auto;max-width:100%;scrollbar-width:thin}
+  .seg button{flex:1 0 auto;min-height:44px}
+}
+
+/* ---------- tables (clients, keys): stack into cards on phones ---------- */
+.tbl{width:100%;border-collapse:collapse}
+.tbl th{font-family:var(--mono);font-weight:500;font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;text-align:left;color:var(--ink-soft);padding:12px 16px;border-bottom:2px solid var(--navy)}
+.tbl td{padding:12px 16px;border-bottom:1.5px solid var(--line);vertical-align:middle}
+.tbl tr:last-child td{border-bottom:0}
+.tbl td.r{text-align:right}
+.tbl .name{font-weight:700;overflow-wrap:anywhere}
+.cell-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:nowrap}
+.stage-cell{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.tbl .nowrap{white-space:nowrap;overflow-wrap:normal}
+.tbl td.contact{min-width:12rem;max-width:16rem}
+.tbl td.contact a{color:inherit;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.snip{color:var(--ink-soft);font-size:.85rem;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere;margin-top:2px}
+@media (max-width:760px){
+  .tbl thead{display:none}
+  .tbl,.tbl tbody,.tbl tr,.tbl td{display:block;width:100%}
+  .tbl tr{padding:12px 14px;border-bottom:1.5px solid var(--line)}
+  .tbl tr:last-child{border-bottom:0}
+  .tbl td{border:0;padding:4px 0}
+  .tbl td[data-label]::before{content:attr(data-label);display:block;font-family:var(--mono);font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft)}
+  .tbl td.r{text-align:left}
+  .cell-actions{justify-content:flex-start;flex-wrap:wrap;padding-top:6px}
+  .tbl td.contact{max-width:none}
+  .tbl td.contact.none{display:none}
+  .tbl td.count::before{display:inline!important;margin-right:8px}
+}
+
+/* ---------- Tasks list ---------- */
+.quickadd{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px;padding:12px;border:2px solid var(--navy);border-radius:var(--radius);background:var(--card)}
+.quickadd input{flex:1 1 16rem;min-width:0}
+.quickadd select{width:auto;flex:0 1 12rem;min-width:0}
+.tgroup{margin-bottom:22px}
+.tgroup>h2{font-family:var(--mono);font-size:.78rem;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-soft);margin:0 0 8px 2px}
+.tgroup.overdue>h2{color:var(--danger)}
+.tlist{list-style:none;padding:0;background:var(--card);border:2px solid var(--navy);border-radius:var(--radius);overflow:hidden}
+.trow{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-bottom:1.5px solid var(--line)}
+.trow:last-child{border-bottom:0}
+.trow.is-late{box-shadow:inset 6px 0 0 var(--danger)}
+.check{flex:none;width:44px;height:44px;margin:-4px 0;border:2px solid var(--navy);border-radius:10px;background:#fff;display:grid;place-items:center;color:transparent}
+.check:hover:not(:disabled){background:var(--lime-tint);color:var(--navy)}
+.check[aria-pressed="true"]{background:var(--lime);color:var(--navy)}
+.check .ico{width:22px;height:22px;stroke-width:3}
+.tmain{flex:1;min-width:0;padding-top:4px}
+.tmain .linkbtn{font-size:1rem;line-height:1.35}
+.trow.is-done .tmain .linkbtn{text-decoration:line-through;color:var(--ink-soft)}
+.tmeta{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;margin-top:4px;font-family:var(--mono);font-size:.75rem;color:var(--ink-soft)}
+.tmeta>span:not(.pill)+span:not(.pill)::before{content:'·';margin-right:10px}   /* 'Brand refresh · Due tomorrow' */
+.tside{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end;flex:none;max-width:45%}
+@media (max-width:760px){.trow{flex-wrap:wrap}.tside{max-width:none;width:100%;justify-content:flex-start;padding-left:56px}}
+
+/* ---------- Projects: cards + P.E.S. phase strip ---------- */
+.pcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr));gap:20px}
+.pcard{background:var(--card);border:2px solid var(--navy);border-radius:var(--radius);padding:18px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.pcard .top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.pcard .kv{display:flex;justify-content:space-between;gap:10px;font-family:var(--mono);font-size:.76rem;color:var(--ink-soft);flex-wrap:wrap}
+.pcard .kv b{color:var(--navy);font-weight:500}
+.pcard .foot{display:flex;gap:8px;flex-wrap:wrap;align-items:center;border-top:1.5px solid var(--line);padding-top:12px;margin-top:auto}
+.bar{height:10px;background:var(--cream-2);border:1.5px solid var(--navy);border-radius:99px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--lime)}
+.phase{display:flex;border:2px solid var(--navy);border-radius:8px;overflow:hidden}
+.phase button,.phase span{flex:1;border:0;border-right:2px solid var(--navy);background:transparent;padding:6px;font-family:var(--display);font-size:1.2rem;letter-spacing:.06em;color:var(--ink-soft);min-height:44px;display:grid;place-items:center}
+.phase>:last-child{border-right:0}
+.phase button:hover:not(.on){background:var(--cream-2)}
+.phase .past{background:var(--lime);color:var(--navy)}
+.phase .on{background:var(--navy);color:var(--cream)}
+
+/* ---------- Keys ---------- */
+.scopes{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:0;border:2px solid var(--navy);border-radius:8px;overflow:hidden}
+.scopes>div{padding:8px 12px;border-bottom:1.5px solid var(--line);display:flex;align-items:center;gap:8px;min-width:0}
+.scopes>div.hd{font-family:var(--mono);font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-soft);border-bottom:2px solid var(--navy)}
+.scopes>div.last{border-bottom:0}
+.scopes label{display:flex;align-items:center;gap:8px;min-height:44px;cursor:pointer;font-size:.85rem}
+.scopes input[type="checkbox"]{width:22px;height:22px;min-height:0;accent-color:var(--purple);flex:none}
+.scopes .desc{font-size:.8rem;color:var(--ink-soft)}
+.keybox{display:flex;gap:8px;flex-wrap:wrap}
+.keybox input{flex:1 1 14rem;font-family:var(--mono);font-size:.85rem;background:var(--cream-2)}
+.warn{border:2px solid var(--danger);background:var(--danger-tint);border-radius:8px;padding:10px 12px;color:var(--danger);font-weight:700;font-size:.9rem}
+
+/* ---------- 1e. Dialogs ---------- */
+dialog{margin:auto;border:2px solid var(--navy);border-radius:var(--radius);padding:0;background:var(--cream);color:var(--ink);width:min(560px,calc(100vw - 24px));max-height:calc(100vh - 24px);box-shadow:8px 8px 0 var(--navy)}
+dialog::backdrop{background:rgba(45,42,95,.55)}
+.dform{padding:22px;display:flex;flex-direction:column;gap:14px}
+.dhead{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.dhead .h2{font-size:2rem;color:var(--purple)}
+.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.fgrid .full{grid-column:1/-1}
+@media (max-width:520px){.fgrid{grid-template-columns:1fr}}
+.field{display:flex;flex-direction:column;gap:5px;min-width:0}
+.field>label,.field .lbl{font-weight:700;font-size:.875rem}
+.field .lbl{display:flex;gap:4px}
+.field .req{color:var(--danger)}
+.field .hint{font-size:.78rem;color:var(--ink-soft)}
+.field .ferr{font-size:.82rem;color:var(--danger);font-weight:700}
+.field .ferr:empty{display:none}
+.derr{color:var(--danger);font-weight:700;font-size:.9rem}
+.derr:empty{display:none}
+.dfoot{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;border-top:2px solid var(--navy);padding-top:14px}
+.dfoot .right{display:flex;gap:10px;margin-left:auto;flex-wrap:wrap}
+.stamp{font-family:var(--mono);font-size:.72rem;color:var(--ink-soft)}
+
+/* ---------- toast ---------- */
+#toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(16px);max-width:calc(100vw - 32px);background:var(--navy);color:var(--cream);padding:11px 18px;border-radius:8px;border-left:6px solid var(--lime);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:50;font-weight:500}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+#toast.bad{border-left-color:#FF8A80}
+
+/* ---------- sign-in gate ---------- */
+.gate{min-height:100vh;display:grid;place-items:center;padding:24px 16px;background:radial-gradient(circle at 20% 10%,#fff 0,var(--cream) 55%)}
+.gate .panel{width:min(440px,100%);padding:28px;box-shadow:8px 8px 0 var(--navy)}
+.gate .brandrow{display:flex;gap:14px;align-items:center;margin-bottom:18px}
+.gate form{display:flex;flex-direction:column;gap:12px;margin-top:18px}
+
+/* ---------- 1f. Phones: rail becomes a bottom bar ---------- */
+@media (max-width:760px){
+  .shell{grid-template-columns:minmax(0,1fr);background:none}
+  .rail{position:fixed;inset:auto 0 0 0;height:auto;flex-direction:row;padding:4px 4px calc(4px + env(safe-area-inset-bottom));z-index:30;gap:0;border-top:3px solid var(--lime)}
+  .brand,.rail-foot{display:none}
+  .nav{flex-direction:row;flex:1;justify-content:space-around;gap:2px}
+  .nav a{flex:1 1 0;min-width:0;flex-direction:column;gap:2px;font-size:.68rem;padding:6px 2px;border-left:0;border-top:3px solid transparent;border-radius:6px;justify-content:center;text-align:center}
+  .nav a[aria-current="page"]{border-top-color:var(--lime)}
+  .topbar{padding:8px 16px;flex-wrap:nowrap}
+  .vpick{flex:1}
+  .vpick label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+  .vpick select{width:100%;max-width:none}
+  .who .id{display:none}
+  main{padding:20px 16px 110px}
+  .deep{padding:22px 18px}
+  #toast{bottom:90px}
+}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important}}
 </style>
 </head>
 <body>
-<div id="login" class="card" hidden>
-  <h1 style="margin-top:0">BECS OS</h1>
-  <div class="mute">Enter your read-only app key. It stays in this browser tab only and is cleared when you close it.</div>
-  <input id="key" type="password" placeholder="App key" autocomplete="off">
-  <button id="go" class="primary">Sign in</button>
-  <div id="loginErr" class="err"></div>
+
+<!-- Icon sprite: referenced by icon('name') in the script. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-overview" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></symbol>
+  <symbol id="i-clients" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.8c2 .7 3.2 2.4 3.5 5.2"/></symbol>
+  <symbol id="i-projects" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="i-tasks" viewBox="0 0 24 24"><path d="M4 4l2 2 3-3.5M4 11l2 2 3-3.5M4 18l2 2 3-3.5"/><path d="M13 5h8M13 12h8M13 19h8"/></symbol>
+  <symbol id="i-keys" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M10.8 12.2 20 3M17 6l3 3M14.5 8.5l2 2"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-out" viewBox="0 0 24 24"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 16l-4-4 4-4M6 12h10"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/></symbol>
+  <symbol id="i-next" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-retry" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></symbol>
+</svg>
+
+<!-- Sign-in gate: shown while checking the session, for the key box, and when the API is unreachable. -->
+<div id="gate" class="gate">
+  <div class="panel" role="region" aria-labelledby="gateTitle">
+    <div class="brandrow">
+      <svg width="48" height="48" viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="8" fill="#2D2A5F"/><text x="9" y="24" font-family="Bebas Neue,Impact,sans-serif" font-size="26" fill="#F4F7E9">B</text><rect x="9" y="27" width="22" height="3.5" fill="#8DC63F"/><rect x="9" y="32" width="22" height="3.5" fill="#8DC63F"/></svg>
+      <div><div class="eyebrow">BE Consulting Solutions</div><div class="h2" style="color:var(--purple)">BECS OS</div></div>
+    </div>
+    <h1 class="h2" id="gateTitle" style="font-size:2.2rem">Checking sign-in</h1>
+    <div class="lime-rule"></div>
+    <p id="gateMsg" class="muted" style="margin-top:12px" role="status">One moment.</p>
+    <form id="keyForm" hidden autocomplete="off">
+      <div class="field">
+        <label for="keyInput">Access key</label>
+        <input id="keyInput" name="key" type="password" autocomplete="off" spellcheck="false" aria-describedby="keyHelp keyErr">
+        <span id="keyHelp" class="hint">Kept in this browser tab only and forgotten when you close it.</span>
+        <span id="keyErr" class="ferr" role="alert"></span>
+      </div>
+      <button class="btn primary" id="keyBtn" type="submit"><svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg>Unlock</button>
+    </form>
+    <div id="gateRetry" class="actions" style="margin-top:16px" hidden><button class="btn primary" type="button" id="retryBtn">Try again</button></div>
+  </div>
 </div>
 
-<div id="app" hidden>
-  <header>
-    <h1>BECS OS</h1>
-    <nav id="tabs"></nav>
-    <button id="refresh">Refresh</button>
-    <button id="out">Sign out</button>
-  </header>
-  <main id="view"></main>
+<!-- The app shell, shown once signed in. -->
+<div id="shell" class="shell" hidden>
+  <aside class="rail" aria-label="Primary">
+    <a class="brand" href="#/overview" aria-label="BECS OS overview">
+      <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="8" fill="#F4F7E9"/><text x="9" y="24" font-family="Bebas Neue,Impact,sans-serif" font-size="26" fill="#2D2A5F">B</text><rect x="9" y="27" width="22" height="3.5" fill="#8DC63F"/><rect x="9" y="32" width="22" height="3.5" fill="#8DC63F"/></svg>
+      <div><b>BECS OS</b><small>Plan. Evolve. Succeed.</small></div>
+    </a>
+    <nav class="nav" id="nav" aria-label="Sections">
+      <a href="#/overview" data-r="overview"><svg class="ico" aria-hidden="true"><use href="#i-overview"/></svg>Overview</a>
+      <a href="#/clients" data-r="clients"><svg class="ico" aria-hidden="true"><use href="#i-clients"/></svg>Clients</a>
+      <a href="#/projects" data-r="projects"><svg class="ico" aria-hidden="true"><use href="#i-projects"/></svg>Projects</a>
+      <a href="#/tasks" data-r="tasks"><svg class="ico" aria-hidden="true"><use href="#i-tasks"/></svg>Tasks</a>
+      <a href="#/keys" data-r="keys" id="navKeys" hidden><svg class="ico" aria-hidden="true"><use href="#i-keys"/></svg>Keys</a>
+    </nav>
+    <div class="rail-foot"><i></i>BE Consulting Solutions<br>Clients, projects, tasks</div>
+  </aside>
+  <div class="col-main">
+    <header class="topbar">
+      <div class="vpick">
+        <label for="ventureSel">Venture</label>
+        <select id="ventureSel" class="inline"></select>
+      </div>
+      <div class="who">
+        <span class="id" id="whoText"></span>
+        <span id="whoAction"></span>
+      </div>
+    </header>
+    <main id="app" tabindex="-1"></main>
+  </div>
 </div>
+
+<dialog id="dlg" aria-labelledby="dlgTitle"></dialog>
+<dialog id="confirmDlg" aria-labelledby="confirmTitle"></dialog>
+<div id="toast" role="status" aria-live="polite"></div>
+<noscript><p style="padding:24px">BECS OS needs JavaScript turned on.</p></noscript>
 
 <script>
-const $ = (id) => document.getElementById(id);
-const store = { get: () => { try { return sessionStorage.getItem('becs_key') || ''; } catch { return ''; } },
-                set: (v) => { try { v ? sessionStorage.setItem('becs_key', v) : sessionStorage.removeItem('becs_key'); } catch {} } };
+'use strict';
 
-// Build elements without innerHTML so API data can never inject markup.
-function el(tag, props = {}, ...kids) {
-  const n = document.createElement(tag);
-  for (const [k, v] of Object.entries(props)) k === 'class' ? (n.className = v) : n.setAttribute(k, v);
-  for (const k of kids.flat()) n.append(k instanceof Node ? k : document.createTextNode(k ?? ''));
-  return n;
+/* =====================================================================
+   1  SETTINGS AND ALLOWED VALUES (mirror docs/SPEC.md)
+   ===================================================================== */
+const API_BASE = '/api';                       // the Worker answers everything under /api
+const STORE_KEY = 'becs.key';                  // sessionStorage: key typed into the key box (this tab only)
+const STORE_VENTURE = 'becs.venture';          // localStorage: venture switcher choice ('' = all)
+const STORE_LAST_VENTURE = 'becs.lastVenture'; // localStorage: last venture used in a form
+const LIST_LIMIT = 500;                        // the API's maximum page size
+
+const STAGES = [['lead', 'Lead'], ['contacted', 'Contacted'], ['proposal', 'Proposal'], ['active', 'Active'], ['paused', 'Paused'], ['closed', 'Closed']];
+const PROJECT_STATUSES = [['planning', 'Planning'], ['active', 'Active'], ['paused', 'Paused'], ['done', 'Done'], ['cancelled', 'Cancelled']];
+const TASK_STATUSES = [['todo', 'To do'], ['doing', 'Doing'], ['done', 'Done']];
+const PRIORITIES = [[1, 'High'], [2, 'Med'], [3, 'Low']];      // integer in the API
+const TAGS = [['revenue', 'Revenue'], ['systems', 'Systems'], ['brand', 'Brand'], ['workload', 'Workload']];
+const PHASES = [['plan', 'Plan'], ['evolve', 'Evolve'], ['succeed', 'Succeed']];
+const PHASE_VENTURE_SLUG = 'becs';             // P.E.S. phase is only offered for this venture
+
+/* Scopes an app key can be given, with plain-language descriptions for the Keys screen. */
+const SCOPE_TABLES = [
+  ['tasks', 'Tasks', 'See tasks', 'Add, change and delete tasks'],
+  ['clients', 'Clients', 'See clients and their notes', 'Add, change and delete clients'],
+  ['projects', 'Projects', 'See projects and their value', 'Add, change and delete projects'],
+  ['ventures', 'Ventures', 'See the list of ventures', 'Add, rename or archive ventures']
+];
+const ALL_READ = SCOPE_TABLES.map(t => t[0] + ':read').concat('activity:read');
+const ALL_SCOPES = SCOPE_TABLES.flatMap(t => [t[0] + ':read', t[0] + ':write']).concat('activity:read');
+
+const labelOf = (list, v) => { const hit = list.find(([k]) => String(k) === String(v)); return hit ? hit[1] : (v == null ? '' : String(v)); };
+
+/* =====================================================================
+   2  HELPERS
+   ===================================================================== */
+const $ = (sel, root = document) => root.querySelector(sel);
+
+/* h(tag, props, ...children) builds an element. Strings always become TEXT,
+   never HTML, so nothing from the API can inject markup. Props:
+   class, text, on<event> (function), and anything else becomes an attribute
+   (set with setAttribute, which never parses HTML). value/checked/disabled/
+   selected/hidden/readOnly are set as properties after children are added. */
+const PROPS = new Set(['value', 'checked', 'disabled', 'selected', 'hidden', 'readOnly']);
+function h(tag, props, ...kids) {
+  const el = document.createElement(tag);
+  add(el, kids);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (v == null || v === false) continue;
+    if (k === 'class') el.className = v;
+    else if (k === 'text') el.textContent = String(v);
+    else if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2), v);
+    else if (PROPS.has(k)) el[k] = v;
+    else el.setAttribute(k, v === true ? '' : String(v));
+  }
+  return el;
+}
+function add(el, kids) {
+  for (const k of kids.flat(Infinity)) {
+    if (k == null || k === false || k === '') continue;
+    el.append(k instanceof Node ? k : String(k));   // append(string) = text node
+  }
+  return el;
+}
+const SVGNS = 'http://www.w3.org/2000/svg';
+function icon(name) {
+  const s = document.createElementNS(SVGNS, 'svg');
+  s.setAttribute('class', 'ico'); s.setAttribute('aria-hidden', 'true'); s.setAttribute('focusable', 'false');
+  const u = document.createElementNS(SVGNS, 'use'); u.setAttribute('href', '#i-' + name);
+  s.append(u); return s;
+}
+const opt = (value, text, selected) => h('option', { value: String(value ?? ''), selected: !!selected }, text);
+
+/* Safe storage: private windows can throw, so every access is wrapped. */
+function storeGet(kind, k) { try { return (kind === 'session' ? sessionStorage : localStorage).getItem(k); } catch { return null; } }
+function storeSet(kind, k, v) { try { const s = kind === 'session' ? sessionStorage : localStorage; v == null ? s.removeItem(k) : s.setItem(k, v); } catch { /* ignore */ } }
+
+/* Dates: the API uses YYYY-MM-DD. "Today" is the user's LOCAL date. */
+const pad = n => String(n).padStart(2, '0');
+const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const today = () => ymd(new Date());
+const plusDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return ymd(d); };
+const parseDay = s => { const [y, m, d] = String(s).split('-').map(Number); return new Date(y, m - 1, d); };
+function fmtDate(s) {
+  if (!s) return '';
+  const d = parseDay(s); if (isNaN(d)) return String(s);
+  const o = { month: 'short', day: 'numeric' };
+  if (d.getFullYear() !== new Date().getFullYear()) o.year = 'numeric';
+  return d.toLocaleDateString('en-US', o);
+}
+function dayDiff(s) { return Math.round((parseDay(s) - parseDay(today())) / 86400000); }
+/* "Due today", "2 days late", "Due tomorrow", "Due Oct 12" */
+function dueText(s) {
+  if (!s) return '';
+  const n = dayDiff(s);
+  if (n === 0) return 'Due today';
+  if (n === 1) return 'Due tomorrow';
+  if (n === -1) return '1 day late';
+  if (n < 0) return `${-n} days late`;
+  if (n < 7) return `Due ${parseDay(s).toLocaleDateString('en-US', { weekday: 'short' })} ${fmtDate(s)}`;
+  return 'Due ' + fmtDate(s);
+}
+/* Timestamps are UTC text, e.g. "2026-10-04 18:35:00" or ISO. */
+function parseTs(s) {
+  if (!s) return null;
+  const t = String(s);
+  const iso = /^\d{4}-\d\d-\d\d[ T]\d\d:\d\d(:\d\d(\.\d+)?)?$/.test(t) ? t.replace(' ', 'T') + 'Z' : t;
+  const d = new Date(iso); return isNaN(d) ? null : d;
+}
+const fmtTs = s => { const d = parseTs(s); return d ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : String(s || ''); };
+function timeAgo(s) {
+  const d = parseTs(s); if (!d) return s ? String(s) : '';
+  const sec = Math.round((Date.now() - d) / 1000);
+  if (sec < 60) return 'just now';
+  if (sec < 3600) return Math.floor(sec / 60) + ' min ago';
+  if (sec < 86400) return Math.floor(sec / 3600) + ' h ago';
+  if (sec < 86400 * 7) return Math.floor(sec / 86400) + ' d ago';
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-async function api(path) {
-  const res = await fetch(path, { headers: { Authorization: 'Bearer ' + store.get() } });
-  if (res.status === 401) throw Object.assign(new Error('Invalid key'), { auth: true });
-  if (res.status === 403) throw new Error('This key lacks permission for ' + path.split('?')[0] + '. Reissue it with the needed read scope.');
-  if (res.status === 429) throw new Error('Rate limited. Wait a minute and refresh.');
-  if (!res.ok) throw new Error('Server error (' + res.status + ')');
-  return res.json();
+/* Money: the API stores integer cents; people see and type dollars. */
+function money(cents) {
+  if (cents == null || cents === '') return '';
+  const c = Number(cents);
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: c % 100 ? 2 : 0, maximumFractionDigits: 2 }).format(c / 100);
 }
+function moneyShort(cents) {
+  const d = Number(cents || 0) / 100;
+  if (d >= 1e6) return '$' + (d / 1e6).toFixed(d >= 1e7 ? 0 : 1) + 'M';
+  if (d >= 1e4) return '$' + Math.round(d / 1e3) + 'K';
+  return money(cents || 0);
+}
+const centsToInput = c => (c == null || c === '') ? '' : (Number(c) % 100 ? (Number(c) / 100).toFixed(2) : String(Number(c) / 100));
+function dollarsToCents(str) {   // returns cents, null for empty, or throws a message
+  const s = String(str || '').trim().replace(/[$,\s]/g, '');
+  if (!s) return null;
+  if (!/^\d+(\.\d{0,2})?$/.test(s)) throw 'Enter an amount in dollars, like 4500 or 4500.50.';
+  return Math.round(parseFloat(s) * 100);
+}
+const prioLabel = p => labelOf(PRIORITIES, p) || 'Low';
+const byName = (a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' });
 
-const stat = (n, label, cls = '') => el('div', { class: 'card stat' }, el('b', { class: cls }, String(n)), el('span', { class: 'mute' }, label));
-const money = (c) => (c == null ? '' : '$' + (c / 100).toLocaleString(undefined, { maximumFractionDigits: 0 }));
-const table = (heads, rows, empty) =>
-  rows.length
-    ? el('div', { class: 'scroll' }, el('table', {}, el('tr', {}, heads.map((h) => el('th', {}, h))), rows.map((r) => el('tr', {}, r.map((c) => el('td', {}, c))))))
-    : el('div', { class: 'mute' }, empty);
-
-const state = { tab: 'Today', ventures: {} };
-const tabs = {
-  async Today() {
-    const [d, t] = await Promise.all([api('/dashboard'), api('/tasks?limit=500')]);
-    const open = t.data.filter((x) => x.status !== 'done').sort((a, b) => a.priority - b.priority || (a.due_date || '9').localeCompare(b.due_date || '9'));
-    return el('div', {},
-      el('div', { class: 'grid' }, stat(d.open_tasks, 'Open tasks'), stat(d.overdue.length, 'Overdue', d.overdue.length ? 'bad' : 'ok'),
-        stat(d.client_pipeline.reduce((s, p) => s + p.n, 0), 'Clients')),
-      el('h2', {}, 'Overdue'),
-      table(['Task', 'Due', 'Pri'], d.overdue.map((x) => [x.title, el('span', { class: 'bad' }, x.due_date), String(x.priority)]), 'Nothing overdue.'),
-      el('h2', {}, 'Open tasks by priority'),
-      table(['Task', 'Venture', 'Tag', 'Due', 'Pri'], open.slice(0, 50).map((x) => [x.title, state.ventures[x.venture_id] || '', x.filter_tag ? el('span', { class: 'tag' }, x.filter_tag) : '', x.due_date || '', String(x.priority)]), 'No open tasks.'));
-  },
-  async Ventures() {
-    const d = await api('/dashboard');
-    const max = Math.max(1, ...d.open_tasks_by_venture.map((v) => v.open_tasks));
-    return el('div', {}, el('h2', {}, 'Open tasks per venture'),
-      table(['Venture', 'Open', ''], d.open_tasks_by_venture.map((v) => [v.slug, String(v.open_tasks), el('div', { class: 'bar', style: 'width:' + Math.round((v.open_tasks / max) * 100) + '%' })]), 'No ventures.'));
-  },
-  async Pipeline() {
-    const [c] = await Promise.all([api('/clients?limit=500')]);
-    const stages = {};
-    for (const x of c.data) (stages[x.stage] ||= []).push(x);
-    const out = el('div', {});
-    const names = Object.keys(stages);
-    if (!names.length) out.append(el('div', { class: 'mute' }, 'No clients yet.'));
-    for (const s of names) {
-      out.append(el('h2', {}, s + ' (' + stages[s].length + ')'),
-        table(['Client', 'Venture', 'Contact', 'Source'], stages[s].map((x) => [x.name, state.ventures[x.venture_id] || '', x.contact_name || '', x.source || '']), ''));
-    }
-    return out;
-  },
-  async Projects() {
-    const p = await api('/projects?limit=500');
-    const total = p.data.filter((x) => x.status !== 'done' && x.status !== 'cancelled').reduce((s, x) => s + (x.value_cents || 0), 0);
-    return el('div', {}, el('div', { class: 'grid' }, stat(money(total), 'Active project value')),
-      table(['Project', 'Venture', 'Status', 'Due', 'Value'], p.data.map((x) => [x.name, state.ventures[x.venture_id] || '', el('span', { class: 'tag' }, x.status), x.due_date || '', money(x.value_cents)]), 'No projects yet.'));
-  },
+/* =====================================================================
+   3  API LAYER. Every request goes through api(). Success returns the
+   "data" part of {"data": ...}. Failure throws ApiError with the server's
+   status, error code, plain message and per-field problems.
+   ===================================================================== */
+class ApiError extends Error {
+  constructor(status, code, message, fields) { super(message); this.status = status; this.code = code; this.fields = fields || null; }
+}
+const FALLBACK_MESSAGES = {
+  0: 'Can\u2019t reach BECS OS. Check your connection, then try again.',
+  400: 'The server did not accept that. Check the fields and try again.',
+  401: 'You are not signed in.',
+  403: 'This key is not allowed to do that.',
+  404: 'That record no longer exists. It may have been deleted.',
+  405: 'That action is not supported.',
+  409: 'That can\u2019t be done because other records still point at this one.',
+  429: 'Too many requests from this key. Wait a minute, then try again.',
+  500: 'The server hit a problem. Try again in a moment.'
 };
-
-async function render() {
-  const view = $('view');
-  view.replaceChildren(el('div', { class: 'mute' }, 'Loading...'));
+function qs(params) {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(params || {})) if (v !== null && v !== undefined && v !== '') p.set(k, String(v));
+  const s = p.toString(); return s ? '?' + s : '';
+}
+async function api(method, path, body) {
+  const headers = { Accept: 'application/json' };
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  const key = storeGet('session', STORE_KEY);
+  if (key) headers.Authorization = 'Bearer ' + key;
+  let res;
   try {
-    if (!Object.keys(state.ventures).length) {
-      try { for (const v of (await api('/ventures')).data) state.ventures[v.id] = v.slug; } catch (e) { if (e.auth) throw e; }
-    }
-    view.replaceChildren(await tabs[state.tab]());
+    res = await fetch(API_BASE + path, { method, headers, credentials: 'same-origin', cache: 'no-store', body: body === undefined ? undefined : JSON.stringify(body) });
+  } catch {
+    throw new ApiError(0, 'network', FALLBACK_MESSAGES[0]);
+  }
+  let json = null;
+  try { json = await res.json(); } catch { /* not JSON */ }
+  if (res.ok) return json && typeof json === 'object' && 'data' in json ? json.data : json;
+  const code = (json && json.error) || 'http_' + res.status;
+  let msg = (json && typeof json.message === 'string' && json.message) || FALLBACK_MESSAGES[res.status] || `Request failed (${res.status}).`;
+  if (code === 'bad_origin') msg = 'The request was blocked as coming from another site. Reload the page and try again.';
+  const err = new ApiError(res.status, code, msg, json && json.fields);
+  if (res.status === 401 && path !== '/me') sessionLost();
+  throw err;
+}
+/* GET helpers for screens. need() = the screen cannot work without it.
+   maybe() = nice to have; returns null when not allowed or failing. */
+const need = (path, params) => api('GET', path + qs(params));
+async function maybe(path, params, scope) {
+  if (scope && !can(scope)) return null;
+  try { return await api('GET', path + qs(params)); } catch (e) { if (e.status === 401) throw e; return null; }
+}
+
+/* =====================================================================
+   4  SIGN-IN. GET /api/me with the browser's cookies (Cloudflare Access).
+   200 = in. 401 = show the key box; the key lives in sessionStorage only.
+   ===================================================================== */
+const SESSION = { me: null, mode: null };   // mode: 'key' | 'access'
+const can = scope => !!SESSION.me && (SESSION.me.kind !== 'app' || (SESSION.me.scopes || []).includes(scope));
+const isAdmin = () => !!SESSION.me && (SESSION.me.kind === 'master' || SESSION.me.kind === 'user');
+
+function gate(state, msg) {
+  $('#shell').hidden = true; $('#gate').hidden = false;
+  closeDialogs();
+  const title = { checking: 'Checking sign-in', key: 'Unlock', down: 'Can\u2019t reach BECS OS', expired: 'Signed out' }[state];
+  $('#gateTitle').textContent = title;
+  $('#gateMsg').textContent = msg;
+  $('#keyForm').hidden = state !== 'key';
+  $('#gateRetry').hidden = !(state === 'down' || state === 'expired');
+  $('#retryBtn').textContent = state === 'expired' ? 'Reload and sign in' : 'Try again';
+  $('#retryBtn').onclick = state === 'expired' ? () => location.reload() : boot;
+  if (state === 'key') { $('#keyErr').textContent = ''; $('#keyInput').value = ''; $('#keyInput').focus(); }
+  else if (state !== 'checking') $('#retryBtn').focus();
+}
+
+async function boot() {
+  gate('checking', 'One moment.');
+  const hadKey = !!storeGet('session', STORE_KEY);
+  try {
+    SESSION.me = await api('GET', '/me');
+    SESSION.mode = hadKey ? 'key' : 'access';
+    await enterApp();
   } catch (e) {
-    if (e.auth) return signOut('Invalid key. Try again.');
-    view.replaceChildren(el('div', { class: 'card bad' }, e.message));
+    if (e.status === 401) {
+      storeSet('session', STORE_KEY, null);
+      gate('key', hadKey ? 'Your saved key was not accepted. Enter it again.' : 'Enter your access key to open the console.');
+      if (hadKey) $('#keyErr').textContent = 'That key was not accepted.';
+    } else {
+      gate('down', e.message + (e.status ? ` (error ${e.status})` : ''));
+    }
   }
 }
 
-function buildTabs() {
-  $('tabs').replaceChildren(...Object.keys(tabs).map((t) => {
-    const b = el('button', { class: t === state.tab ? 'on' : '' }, t);
-    b.onclick = () => { state.tab = t; buildTabs(); render(); };
-    return b;
-  }));
+$('#keyForm').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const key = $('#keyInput').value.trim();
+  const err = $('#keyErr'), btn = $('#keyBtn');
+  if (!key) { err.textContent = 'Paste your key first.'; $('#keyInput').setAttribute('aria-invalid', 'true'); return; }
+  btn.disabled = true; err.textContent = '';
+  storeSet('session', STORE_KEY, key);
+  try {
+    SESSION.me = await api('GET', '/me');
+    SESSION.mode = 'key';
+    $('#keyInput').value = '';
+    $('#keyInput').removeAttribute('aria-invalid');
+    await enterApp();
+  } catch (e) {
+    storeSet('session', STORE_KEY, null);
+    err.textContent = e.status === 401 ? 'That key was not accepted. Check it and try again.' : e.message;
+    $('#keyInput').setAttribute('aria-invalid', 'true');
+    $('#keyInput').focus();
+  } finally { btn.disabled = false; }
+});
+
+/* Remove everything the last session loaded from the page, so a locked or
+   signed-out console does not keep client data in the (hidden) page. */
+function clearScreen() {
+  renderToken++;                    // stop any screen that is still loading
+  cache = null; current = null;
+  $('#app').replaceChildren();
 }
 
-function signOut(msg = '') { store.set(''); state.ventures = {}; $('app').hidden = true; $('login').hidden = false; $('key').value = ''; $('loginErr').textContent = msg; }
-function enter() { $('login').hidden = true; $('app').hidden = false; buildTabs(); render(); }
+let lostOnce = false;
+function sessionLost() {            // a 401 in the middle of using the app
+  if (lostOnce) return; lostOnce = true;
+  clearScreen();
+  if (SESSION.mode === 'key') {
+    storeSet('session', STORE_KEY, null);
+    gate('key', 'The key stopped working (it may have been revoked). Enter a key to continue.');
+  } else {
+    gate('expired', 'Your sign-in has expired. Reload to sign in again.');
+  }
+  SESSION.me = null;
+}
+function lock() {
+  storeSet('session', STORE_KEY, null);
+  SESSION.me = null; clearScreen();
+  gate('key', 'Locked. Enter your key to open the console again.');
+}
 
-$('go').onclick = () => { const k = $('key').value.trim(); if (!k) return; store.set(k); enter(); };
-$('key').onkeydown = (e) => { if (e.key === 'Enter') $('go').click(); };
-$('refresh').onclick = render;
-$('out').onclick = () => signOut();
-store.get() ? enter() : signOut();
+function drawWho() {
+  const me = SESSION.me;
+  const text = me.kind === 'master' ? 'Master key' : me.kind === 'user' ? (me.email || 'Signed in') : `App: ${me.app || 'unknown'}`;
+  $('#whoText').textContent = text;
+  $('#whoText').title = me.kind === 'app' ? 'Scopes: ' + (me.scopes || []).join(', ') : text;
+  const slot = $('#whoAction');
+  slot.replaceChildren(SESSION.mode === 'key'
+    ? h('button', { class: 'btn sm', type: 'button', onclick: lock, title: 'Forget the key in this tab' }, icon('lock'), 'Lock')
+    : h('a', { class: 'btn sm', href: '/cdn-cgi/access/logout' }, icon('out'), 'Sign out'));
+}
+
+async function enterApp() {
+  lostOnce = false;
+  await loadVentures();
+  drawWho();
+  $('#navKeys').hidden = !isAdmin();
+  $('#gate').hidden = true; $('#shell').hidden = false;
+  route();
+}
+
+/* =====================================================================
+   5  VENTURES AND THE SWITCHER
+   ===================================================================== */
+let VENTURES = [];   // [{id, slug, name, status, ...}]
+async function loadVentures() {
+  VENTURES = [];
+  if (can('ventures:read')) {
+    try { VENTURES = (await api('GET', '/ventures' + qs({ limit: LIST_LIMIT }))) || []; } catch (e) { if (e.status === 401) throw e; }
+  }
+  VENTURES.sort((a, b) => (a.status === 'archived') - (b.status === 'archived') || byName(a, b));
+  const saved = storeGet('local', STORE_VENTURE) || '';
+  if (saved && !VENTURES.some(v => String(v.id) === saved)) storeSet('local', STORE_VENTURE, null);
+  drawVenturePicker();
+}
+const ventureById = id => VENTURES.find(v => String(v.id) === String(id));
+const ventureName = id => (ventureById(id) || {}).name || (id ? 'Venture ' + id : '');
+const ventureSlug = id => (ventureById(id) || {}).slug || '';
+const selectedVenture = () => storeGet('local', STORE_VENTURE) || '';     // '' = all
+const ventureParam = () => ({ venture_id: selectedVenture() || null });
+function defaultVenture() {
+  /* Fallback: the oldest active venture (id 1, BECS), not the first one alphabetically. */
+  const first = VENTURES.filter(v => v.status !== 'archived').sort((a, b) => a.id - b.id)[0];
+  return selectedVenture() || storeGet('local', STORE_LAST_VENTURE) || (first || {}).id || '';
+}
+function setVenture(id) {
+  storeSet('local', STORE_VENTURE, id ? String(id) : null);
+  $('#ventureSel').value = id ? String(id) : '';
+  route();
+}
+function drawVenturePicker() {
+  const sel = $('#ventureSel'), cur = selectedVenture();
+  sel.replaceChildren(opt('', 'All ventures', !cur),
+    ...VENTURES.map(v => opt(v.id, v.name + (v.status && v.status !== 'active' ? ` (${v.status})` : ''))));
+  sel.value = cur;
+  sel.closest('.vpick').hidden = !VENTURES.length;
+}
+$('#ventureSel').addEventListener('change', e => setVenture(e.target.value));
+/* Small dark tag naming the venture, shown on rows when "All ventures" is selected. */
+const ventTag = id => !selectedVenture() && id ? h('span', { class: 'pill vent', title: ventureName(id) }, ventureSlug(id) || ('#' + id)) : null;
+
+/* =====================================================================
+   6  SHARED PIECES: toast, confirm box, notices, write()
+   ===================================================================== */
+function toast(msg, bad) {
+  const t = $('#toast');
+  t.textContent = msg; t.classList.toggle('bad', !!bad); t.setAttribute('role', bad ? 'alert' : 'status');
+  t.classList.add('show'); clearTimeout(toast.t);
+  toast.t = setTimeout(() => t.classList.remove('show'), bad ? 6000 : 2600);
+}
+
+/* Remember what had focus before a dialog opened, and go back to it after. */
+function openModal(dlg, focusEl) {
+  const back = document.activeElement;
+  dlg.addEventListener('close', () => {
+    if (dlg.id === 'dlg') dlg.replaceChildren();
+    const fk = back && back.dataset && back.dataset.fk;
+    const target = (back && back.isConnected) ? back : (fk && document.querySelector(`[data-fk="${CSS.escape(fk)}"]`)) || $('#app');
+    if (!$('#shell').hidden) target.focus();
+  }, { once: true });
+  dlg.showModal();
+  (focusEl || dlg.querySelector('input,select,textarea,button')).focus();
+}
+function closeDialogs() { for (const d of document.querySelectorAll('dialog[open]')) d.close(); }
+
+/* confirmBox({title, body, ok}) resolves true when confirmed. Escape or Cancel = false. */
+function confirmBox({ title, body, ok = 'Delete', danger = true }) {
+  return new Promise(resolve => {
+    const dlg = $('#confirmDlg');
+    const cancel = h('button', { class: 'btn', type: 'button', onclick: () => dlg.close('no') }, 'Cancel');
+    const yes = h('button', { class: 'btn ' + (danger ? 'danger' : 'solid'), type: 'button', onclick: () => dlg.close('yes') }, ok);
+    dlg.replaceChildren(h('div', { class: 'dform' },
+      h('div', {}, h('div', { class: 'eyebrow' }, 'Please confirm'), h('h2', { class: 'h2', id: 'confirmTitle', style: 'margin-top:4px' }, title), h('div', { class: 'lime-rule' })),
+      h('p', {}, body),
+      h('div', { class: 'dfoot' }, h('div', { class: 'right' }, cancel, yes))));
+    dlg.returnValue = '';
+    dlg.addEventListener('close', () => resolve(dlg.returnValue === 'yes'), { once: true });
+    openModal(dlg, cancel);
+  });
+}
+
+/* A notice panel used for "not allowed", "could not load" and similar. */
+function notice(title, text, { retry, err = true } = {}) {
+  return h('div', { class: 'notice' + (err ? ' err' : ''), role: err ? 'alert' : null },
+    h('b', {}, title), h('span', { class: 'small' }, text),
+    retry ? h('div', { class: 'actions' }, h('button', { class: 'btn sm', type: 'button', onclick: retry }, icon('retry'), 'Try again')) : null);
+}
+function errorNotice(e, what, scope) {
+  if (e.status === 403 && e.code !== 'bad_origin') {
+    return notice(`This key can\u2019t see ${what}`, scope ? `It needs the "${scope}" scope. Ask for a key with that scope, or sign in as the owner.` : e.message, { err: false });
+  }
+  return notice(`Couldn\u2019t load ${what}`, e.message + (e.status ? ` (error ${e.status})` : ''), { retry: () => route() });
+}
+
+/* Run one write (POST/PATCH/DELETE), then refetch the current screen.
+   The control that started it is disabled while the request is in flight. */
+async function write(method, path, body, okMsg, control, toastErrors = true) {
+  if (control) control.disabled = true;
+  try {
+    const out = await api(method, path, body);
+    RELATED.clear();
+    if (okMsg) toast(okMsg);
+    await refresh();
+    return out;
+  } catch (e) {
+    if (e.status !== 401 && toastErrors) toast(e.message, true);
+    throw e;
+  } finally {
+    if (control && control.isConnected) control.disabled = false;   // only matters if the refresh did not replace it
+  }
+}
+const quiet = p => p.catch(() => {});   // for click handlers: errors were already shown
+
+/* Option lists for related pickers (a venture's clients / projects), cached until the next write. */
+const RELATED = new Map();
+async function related(table, ventureId) {
+  if (!ventureId || !can(table + ':read')) return null;
+  const k = table + ':' + ventureId;
+  if (!RELATED.has(k)) RELATED.set(k, api('GET', `/${table}` + qs({ venture_id: ventureId, limit: LIST_LIMIT })).then(r => (r || []).sort(byName)).catch(e => { RELATED.delete(k); return null; }));
+  return RELATED.get(k);
+}
+
+/* =====================================================================
+   7  THE FORM DIALOG (used for every create and edit)
+   fields: [{ name, label, kind, required, max, options, hint, full,
+              showIf(values), hiddenValue(values), relatedTo }]
+   kind: text | email | tel | textarea | date | money | select | venture | related
+   - On create, empty optional fields are left out.
+   - On edit, only fields that changed are sent (PATCH).
+   - Server "fields" errors are shown under the matching input.
+   ===================================================================== */
+function formDialog({ eyebrow, title, fields, row, preset = {}, submitLabel, onSubmit, onDelete, stamp }) {
+  const dlg = $('#dlg');
+  const inputs = {}, wraps = {}, errs = {};
+  const general = h('div', { class: 'derr', role: 'alert' });
+  const grid = h('div', { class: 'fgrid' });
+  const initial = f => row ? row[f.name] : (preset[f.name] !== undefined ? preset[f.name] : f.default);
+
+  for (const f of fields) {
+    const id = 'f-' + f.name, errId = id + '-err', hintId = id + '-hint';
+    let input;
+    if (f.kind === 'textarea') input = h('textarea', { id, name: f.name, maxlength: f.max, rows: 4 });
+    else if (f.kind === 'select' || f.kind === 'related' || (f.kind === 'venture' && VENTURES.length)) input = h('select', { id, name: f.name });
+    else if (f.kind === 'venture') input = h('input', { id, name: f.name, type: 'number', min: 1, inputmode: 'numeric' });
+    else input = h('input', { id, name: f.name, type: { email: 'email', tel: 'tel', date: 'date' }[f.kind] || 'text', maxlength: f.max, inputmode: f.kind === 'money' ? 'decimal' : null, autocomplete: 'off', spellcheck: f.kind === 'text' ? 'true' : 'false' });
+    input.setAttribute('aria-describedby', (f.hint ? hintId + ' ' : '') + errId);
+    if (f.required) input.setAttribute('aria-required', 'true');
+
+    const v = initial(f);
+    if (f.kind === 'select') { input.append(...f.options.map(([k, l]) => opt(k, l))); input.value = v == null ? '' : String(v); }
+    else if (f.kind === 'venture' && VENTURES.length) {
+      input.append(opt('', 'Choose a venture'), ...VENTURES.map(x => opt(x.id, x.name + (x.status === 'archived' ? ' (archived)' : ''))));
+      input.value = v == null ? '' : String(v);
+    }
+    else if (f.kind === 'related') { input.dataset.want = v == null ? '' : String(v); }
+    else if (f.kind === 'money') input.value = centsToInput(v);
+    else input.value = v == null ? '' : String(v);
+
+    errs[f.name] = h('span', { class: 'ferr', id: errId });
+    inputs[f.name] = input;
+    wraps[f.name] = h('div', { class: 'field' + (f.full ? ' full' : '') },
+      h('div', { class: 'lbl' }, h('label', { for: id }, f.label), f.required ? h('span', { class: 'req', 'aria-hidden': 'true' }, '*') : null),
+      input, f.hint ? h('span', { class: 'hint', id: hintId }, f.hint) : null, errs[f.name]);
+    grid.append(wraps[f.name]);
+  }
+
+  const values = () => Object.fromEntries(fields.map(f => [f.name, inputs[f.name].value]));
+  /* Show/hide conditional fields and refill pickers that depend on the venture. */
+  async function sync(changed) {
+    const vals = values();
+    for (const f of fields) if (f.showIf) wraps[f.name].hidden = !f.showIf(vals);
+    for (const f of fields) {
+      if (f.kind !== 'related' || (changed && changed !== f.relatedTo && changed !== 'init')) continue;
+      const sel = inputs[f.name], want = changed === 'init' ? sel.dataset.want : sel.value;
+      sel.disabled = true; sel.replaceChildren(opt('', 'Loading\u2026'));
+      const list = await f.options(vals);
+      sel.replaceChildren(opt('', f.none || 'None'));
+      if (list === null) {
+        wraps[f.name].hidden = !want;   // not readable: only keep the current value
+        if (want) sel.append(opt(want, `Current (#${want})`));
+      } else {
+        wraps[f.name].hidden = false;
+        sel.append(...list.map(x => opt(x.id, x.name || x.title)));
+        if (want && !list.some(x => String(x.id) === want) && changed === 'init') sel.append(opt(want, `#${want} (other venture)`));
+      }
+      sel.value = want && [...sel.options].some(o => o.value === want) ? want : '';
+      sel.disabled = false;
+    }
+  }
+  for (const f of fields) if (f.kind === 'venture' || f.kind === 'select') inputs[f.name].addEventListener('change', () => sync(f.name));
+
+  function clearErrors() {
+    general.textContent = '';
+    for (const f of fields) { errs[f.name].textContent = ''; inputs[f.name].removeAttribute('aria-invalid'); }
+  }
+  function showErrors(map, msg) {
+    let first = null; const extra = [];
+    for (const [k, problem] of Object.entries(map || {})) {
+      if (inputs[k] && !wraps[k].hidden) { errs[k].textContent = String(problem); inputs[k].setAttribute('aria-invalid', 'true'); first = first || inputs[k]; }
+      else extra.push(`${k}: ${problem}`);
+    }
+    general.textContent = [msg, ...extra].filter(Boolean).join(' ');
+    (first || general).focus?.();
+  }
+
+  /* Turn the inputs into the JSON body. Throws {fields} for local problems. */
+  function collect() {
+    const out = {}, problems = {};
+    const vals = values();
+    for (const f of fields) {
+      const hidden = wraps[f.name].hidden;
+      if (hidden) {
+        const hv = f.hiddenValue ? f.hiddenValue(vals) : undefined;
+        if (hv !== undefined) out[f.name] = hv;
+        continue;
+      }
+      const raw = inputs[f.name].value.trim();
+      let val;
+      if (f.kind === 'money') { try { val = dollarsToCents(raw); } catch (m) { problems[f.name] = m; continue; } }
+      else if (f.numeric || f.kind === 'venture' || f.kind === 'related') val = raw === '' ? null : Number(raw);
+      else val = raw === '' ? null : raw;
+      if (f.required && val === null) { problems[f.name] = 'Required.'; continue; }
+      if (f.kind === 'email' && val && !val.includes('@')) { problems[f.name] = 'Must contain @.'; continue; }
+      out[f.name] = val;
+    }
+    if (Object.keys(problems).length) throw { fields: problems };
+    if (!row) { for (const k of Object.keys(out)) if (out[k] === null && !fields.find(f => f.name === k).sendNull) delete out[k]; return out; }
+    const diff = {};
+    for (const [k, v] of Object.entries(out)) if (String(v ?? '') !== String(row[k] ?? '')) diff[k] = v;
+    return diff;
+  }
+
+  const save = h('button', { class: 'btn primary', type: 'submit' }, submitLabel);
+  const cancel = h('button', { class: 'btn', type: 'button', onclick: () => dlg.close() }, 'Cancel');
+  const del = onDelete ? h('button', { class: 'btn danger', type: 'button' }, 'Delete') : null;
+  const form = h('form', { class: 'dform', novalidate: true },
+    h('div', { class: 'dhead' }, h('div', {}, h('div', { class: 'eyebrow' }, eyebrow), h('h2', { class: 'h2', id: 'dlgTitle', tabindex: '-1', style: 'margin-top:4px;outline:none' }, title), h('div', { class: 'lime-rule' }))),
+    grid, general,
+    stamp ? h('div', { class: 'stamp' }, stamp) : null,
+    h('div', { class: 'dfoot' }, del, h('div', { class: 'right' }, cancel, save)));
+
+  form.addEventListener('submit', async ev => {
+    ev.preventDefault();
+    if (save.disabled) return;
+    clearErrors();
+    let body;
+    try { body = collect(); } catch (p) { showErrors(p.fields, 'Please fix the highlighted fields.'); return; }
+    if (row && !Object.keys(body).length) { dlg.close(); toast('No changes to save.'); return; }
+    save.disabled = true; if (del) del.disabled = true;
+    const label = save.textContent; save.textContent = 'Saving\u2026';
+    try {
+      if (body.venture_id) storeSet('local', STORE_LAST_VENTURE, String(body.venture_id));
+      await onSubmit(body);
+      dlg.close();
+    } catch (e) {
+      if (e.status === 401) return;
+      showErrors(e.fields, e.message);
+    } finally { save.disabled = false; save.textContent = label; if (del) del.disabled = false; }
+  });
+  if (del) del.addEventListener('click', async () => {
+    clearErrors();
+    const yes = await confirmBox(onDelete.confirm);
+    if (!yes) { del.focus(); return; }
+    del.disabled = true; save.disabled = true;
+    try { await onDelete.run(); dlg.close(); }
+    catch (e) { if (e.status !== 401) { general.textContent = e.message; del.focus(); } }
+    finally { del.disabled = false; save.disabled = false; }
+  });
+
+  dlg.replaceChildren(form);
+  sync('init');
+  /* On touch screens an edit form opens on its title instead of the first input,
+     so the keyboard does not pop up and cover the record you only wanted to look at. */
+  const touchEdit = row && window.matchMedia('(pointer: coarse)').matches;
+  openModal(dlg, touchEdit ? $('#dlgTitle', dlg) : inputs[fields.find(f => f.focus)?.name] || null);
+}
+
+/* =====================================================================
+   8  RECORD FORMS
+   ===================================================================== */
+const stampOf = r => r ? `Created ${timeAgo(r.created_at)} \u00b7 Updated ${timeAgo(r.updated_at)}` + (r.completed_at ? ` \u00b7 Completed ${timeAgo(r.completed_at)}` : '') + ` \u00b7 #${r.id}` : null;
+const ventureField = () => ({ name: 'venture_id', label: 'Venture', kind: 'venture', required: true, default: defaultVenture(), hint: VENTURES.length ? null : 'Venture number (this key cannot list ventures).' });
+
+function clientForm(row, preset) {
+  formDialog({
+    eyebrow: row ? 'Edit client' : 'New client', title: row ? row.name : 'Add client', row, preset, stamp: stampOf(row),
+    submitLabel: row ? 'Save changes' : 'Add client',
+    fields: [
+      { name: 'name', label: 'Business name', kind: 'text', required: true, max: 200, full: true, focus: true },
+      ventureField(),
+      { name: 'stage', label: 'Stage', kind: 'select', options: STAGES, default: 'lead' },
+      { name: 'contact_name', label: 'Contact person', kind: 'text', max: 200 },
+      { name: 'email', label: 'Email', kind: 'email', max: 200 },
+      { name: 'phone', label: 'Phone', kind: 'tel', max: 200 },
+      { name: 'source', label: 'Source', kind: 'text', max: 200, hint: 'Where they came from: referral, LinkedIn, event\u2026' },
+      { name: 'notes', label: 'Notes', kind: 'textarea', max: 5000, full: true }
+    ],
+    onSubmit: body => row ? write('PATCH', `/clients/${row.id}`, body, 'Client saved.', null, false) : write('POST', '/clients', body, 'Client added.', null, false),
+    onDelete: row && can('clients:write') ? {
+      confirm: { title: 'Delete client?', body: `"${row.name}" will be removed for good. If projects still belong to this client the server will refuse; delete or move those first.` },
+      run: () => write('DELETE', `/clients/${row.id}`, undefined, 'Client deleted.', null, false)
+    } : null
+  });
+}
+
+function projectForm(row, preset) {
+  formDialog({
+    eyebrow: row ? 'Edit project' : 'New project', title: row ? row.name : 'Add project', row, preset, stamp: stampOf(row),
+    submitLabel: row ? 'Save changes' : 'Add project',
+    fields: [
+      { name: 'name', label: 'Project name', kind: 'text', required: true, max: 200, full: true, focus: true },
+      ventureField(),
+      { name: 'client_id', label: 'Client', kind: 'related', relatedTo: 'venture_id', none: 'No client', options: v => related('clients', v.venture_id) },
+      { name: 'status', label: 'Status', kind: 'select', options: PROJECT_STATUSES, default: 'planning' },
+      { name: 'priority', label: 'Priority', kind: 'select', numeric: true, options: PRIORITIES, default: 3 },
+      { name: 'value_cents', label: 'Value (dollars)', kind: 'money', hint: 'e.g. 4500 or 4500.50' },
+      { name: 'phase', label: 'P.E.S. phase', kind: 'select', options: [['', 'None']].concat(PHASES), sendNull: true,
+        showIf: v => ventureSlug(v.venture_id) === PHASE_VENTURE_SLUG,
+        hiddenValue: () => VENTURES.length ? null : undefined },   // not BECS: phase is null. Unknown venture list: leave as is.
+      { name: 'start_date', label: 'Start date', kind: 'date' },
+      { name: 'due_date', label: 'Due date', kind: 'date' },
+      { name: 'notes', label: 'Notes', kind: 'textarea', max: 5000, full: true }
+    ],
+    onSubmit: body => row ? write('PATCH', `/projects/${row.id}`, body, 'Project saved.', null, false) : write('POST', '/projects', body, 'Project added.', null, false),
+    onDelete: row && can('projects:write') ? {
+      confirm: { title: 'Delete project?', body: `"${row.name}" will be removed for good. If tasks still belong to it the server will refuse; delete or move those first.` },
+      run: () => write('DELETE', `/projects/${row.id}`, undefined, 'Project deleted.', null, false)
+    } : null
+  });
+}
+
+function taskForm(row, preset) {
+  formDialog({
+    eyebrow: row ? 'Edit task' : 'New task', title: row ? 'Edit task' : 'Add task', row, preset, stamp: stampOf(row),
+    submitLabel: row ? 'Save changes' : 'Add task',
+    fields: [
+      { name: 'title', label: 'What needs to happen', kind: 'text', required: true, max: 300, full: true, focus: true },
+      ventureField(),
+      { name: 'project_id', label: 'Project', kind: 'related', relatedTo: 'venture_id', none: 'No project', options: v => related('projects', v.venture_id) },
+      { name: 'status', label: 'Status', kind: 'select', options: TASK_STATUSES, default: 'todo' },
+      { name: 'priority', label: 'Priority', kind: 'select', numeric: true, options: PRIORITIES, default: 3 },
+      { name: 'filter_tag', label: 'Why it matters', kind: 'select', options: [['', 'No tag']].concat(TAGS) },
+      { name: 'due_date', label: 'Due date', kind: 'date' },
+      { name: 'notes', label: 'Notes', kind: 'textarea', max: 5000, full: true }
+    ],
+    onSubmit: body => row ? write('PATCH', `/tasks/${row.id}`, body, 'Task saved.', null, false) : write('POST', '/tasks', body, 'Task added.', null, false),
+    onDelete: row && can('tasks:write') ? {
+      confirm: { title: 'Delete task?', body: `"${row.title}" will be removed for good.` },
+      run: () => write('DELETE', `/tasks/${row.id}`, undefined, 'Task deleted.', null, false)
+    } : null
+  });
+}
+
+/* Open an edit form for a record we only have an id for (fetches it fresh). */
+async function editById(table, id, control) {
+  if (control) control.disabled = true;
+  try {
+    const row = await api('GET', `/${table}/${id}`);
+    ({ clients: clientForm, projects: projectForm, tasks: taskForm })[table](row);
+  } catch (e) { if (e.status !== 401) toast(e.message, true); }
+  finally { if (control && control.isConnected) control.disabled = false; }
+}
+
+/* Quick actions used on several screens. */
+const setTask = (t, patch, msg, el) => quiet(write('PATCH', `/tasks/${t.id}`, patch, msg, el));
+function taskCheck(t) {
+  const done = t.status === 'done';
+  return h('button', {
+    class: 'check', type: 'button', 'aria-pressed': done ? 'true' : 'false', 'data-fk': 'chk-' + t.id,
+    'aria-label': (done ? 'Reopen: ' : 'Mark done: ') + (t.title || ''), title: done ? 'Reopen' : 'Mark done',
+    disabled: !can('tasks:write'),
+    onclick: e => setTask(t, { status: done ? 'todo' : 'done' }, done ? 'Task reopened.' : 'Task done.', e.currentTarget)
+  }, icon('check'));
+}
+function inlineSelect(list, value, labelText, onPick, fk, writable) {
+  const sel = h('select', { class: 'inline', 'aria-label': labelText, 'data-fk': fk, disabled: !writable, value: String(value ?? '') }, list.map(([k, l]) => opt(k, l)));
+  sel.addEventListener('change', () => onPick(sel.value, sel));
+  return sel;
+}
+
+/* Section head: eyebrow, big title, lime rule, intro, actions. */
+function shead(eyebrow, title, intro, ...actions) {
+  return h('header', { class: 'shead' },
+    h('div', {}, h('div', { class: 'eyebrow' }, eyebrow), h('h1', { class: 'h1', style: 'margin-top:6px' }, title), h('div', { class: 'lime-rule' }), intro ? h('p', { class: 'intro' }, intro) : null),
+    h('div', { class: 'actions' }, actions));
+}
+const scopeLabel = () => selectedVenture() ? ventureName(selectedVenture()) : 'All ventures';
+const loadingBlock = () => h('div', { class: 'panel loading', role: 'status' }, 'Loading\u2026');
+
+/* =====================================================================
+   9  SCREENS. Each has load() (fetch) and draw(data) (build the page).
+   draw() may be called again without load() when only a filter changes.
+   ===================================================================== */
+
+/* ---------- 9a Overview ---------- */
+const overview = {
+  title: 'Overview',
+  async load() {
+    const v = ventureParam();
+    const dashScopes = ['tasks:read', 'clients:read', 'projects:read', 'ventures:read'];
+    const missing = dashScopes.filter(s => !can(s));
+    const [dash, activity] = await Promise.all([
+      missing.length ? Promise.resolve({ __missing: missing }) : api('GET', '/dashboard' + qs({ ...v, today: today() })).catch(e => { if (e.status === 401) throw e; return { __error: e }; }),
+      maybe('/activity', { limit: ACTIVITY_FETCH }, isAdmin() || can('activity:read') ? null : 'activity:read')
+    ]);
+    return { dash, activity };
+  },
+  draw({ dash, activity }) {
+    const d = dash.__missing || dash.__error ? null : dash;
+    const canWriteTasks = can('tasks:write');
+    const mast = h('section', { class: 'deep' },
+      h('div', {},
+        h('div', { class: 'eyebrow lime' }, 'Operating overview \u00b7 ' + scopeLabel()),
+        h('h1', { class: 'h1', style: 'margin-top:8px' }, 'What needs you today'),
+        h('p', {}, new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) + '. Overdue work first, then the week ahead.'),
+        h('div', { class: 'pes' }, 'Plan. Evolve. Succeed.')),
+      h('div', { class: 'actions' },
+        can('tasks:write') ? h('button', { class: 'btn primary', type: 'button', onclick: () => taskForm(null, {}) }, icon('plus'), 'Add task') : null,
+        can('clients:write') ? h('button', { class: 'btn light', type: 'button', onclick: () => clientForm(null, {}) }, 'Add client') : null));
+
+    const parts = [mast];
+    if (!d) {
+      parts.push(dash.__missing
+        ? notice('This key can\u2019t show the dashboard', `The dashboard needs these scopes: ${dash.__missing.join(', ')}.`, { err: false })
+        : errorNotice(dash.__error, 'the dashboard', 'tasks:read, clients:read, projects:read and ventures:read'));
+    } else {
+      const late = d.overdue || [], soon = d.due_soon || [];
+      const stat = (label, n, sub, alert) => h('div', { class: 'stat' + (alert ? ' alert' : '') }, h('span', { class: 'l' }, label), h('span', { class: 'n' }, String(n)), sub ? h('span', { class: 's' }, sub) : null);
+      parts.push(h('div', { class: 'stats' + (overview.animated ? '' : ' anim'), role: 'group', 'aria-label': 'Key figures' },
+        stat('Open tasks', d.open_tasks ?? 0),
+        stat('Overdue', late.length >= 25 ? '25+' : late.length, null, late.length > 0),
+        stat('Due in 7 days', soon.length >= 25 ? '25+' : soon.length),
+        stat('Active projects', d.active_projects ?? 0, 'planning + active'),
+        stat('Active value', moneyShort(d.active_project_value_cents), money(d.active_project_value_cents || 0))));
+
+      const dashRow = t => h('li', { class: t.status === 'done' ? 'is-done' : null },
+        taskCheck(Object.assign({ status: 'todo' }, t)),
+        h('div', { class: 'grow' },
+          h('button', { class: 'linkbtn', type: 'button', 'data-fk': 'dt-' + t.id, onclick: e => editById('tasks', t.id, e.currentTarget) }, t.title),
+          h('div', { class: 'tmeta' }, ventTag(t.venture_id), h('span', { class: dayDiff(t.due_date) < 0 ? 'late' : null }, dueText(t.due_date)))),
+        h('span', { class: 'pill p' + (t.priority || 3) }, prioLabel(t.priority)));
+      const list = (items, emptyTitle, emptyText) => h('div', { class: 'panel' }, items.length
+        ? h('ul', { class: 'rows' }, items.map(dashRow))
+        : h('div', { class: 'empty' }, h('b', {}, emptyTitle), emptyText));
+
+      const stages = STAGES.map(([k, l]) => [k, l, ((d.client_pipeline || []).find(s => s.stage === k) || {}).n || 0]);
+      const maxStage = Math.max(1, ...stages.map(s => s[2]));
+      const byV = d.open_tasks_by_venture || [];
+      const maxV = Math.max(1, ...byV.map(x => x.open_tasks || 0));
+      const bar = (n, max) => h('span', { class: 'track', 'aria-hidden': 'true' }, h('i', { style: `width:${Math.round(n / max * 100)}%` }));
+
+      parts.push(h('div', { class: 'grid2' },
+        h('div', {},
+          h('section', { class: 'block' }, h('h2', { class: 'h2' }, 'Overdue', h('span', { class: 'mono' }, String(late.length))),
+            list(late, 'Nothing overdue.', ' Good place to be.')),
+          h('section', { class: 'block' }, h('h2', { class: 'h2' }, 'Due in the next 7 days', h('span', { class: 'mono' }, String(soon.length))),
+            list(soon, 'Nothing due this week.', ' Add due dates to tasks to see them here.'))),
+        h('div', {},
+          h('section', { class: 'block' }, h('h2', { class: 'h2' }, 'Client pipeline'),
+            h('div', { class: 'panel' }, h('ul', { class: 'bars' }, stages.map(([k, l, n]) => h('li', {},
+              h('a', { href: '#/clients', onclick: () => { clientsScreen.stage = k; } },
+                h('span', { class: 'lbl' }, l), bar(n, maxStage), h('span', { class: 'num' }, String(n)))))))),
+          h('section', { class: 'block' }, h('h2', { class: 'h2' }, selectedVenture() ? 'Open tasks in this venture' : 'Open tasks by venture'),
+            h('div', { class: 'panel' }, byV.length ? h('ul', { class: 'bars' }, byV.map(x => h('li', {},
+              h('a', { href: '#/tasks', title: 'Show tasks for ' + (x.name || ''), onclick: ev => { ev.preventDefault(); storeSet('local', STORE_VENTURE, String(x.venture_id)); $('#ventureSel').value = String(x.venture_id); location.hash = '#/tasks'; } },
+                h('span', { class: 'lbl' }, x.name || x.slug || ('Venture ' + x.venture_id)), bar(x.open_tasks || 0, maxV), h('span', { class: 'num' }, String(x.open_tasks || 0)))))) :
+              h('div', { class: 'empty' }, h('b', {}, 'No open tasks.')))),
+          activityBlock(activity))));
+    }
+    if (d) overview.animated = true;   // the stat rail wipes in once per visit, not on every refresh
+    if (!d) parts.push(activityBlock(activity));
+    return parts;
+  }
+};
+/* Activity feed. Each log row (SPEC "activity_log") has entity_type (the table
+   name, e.g. "tasks"), entity_id, action (created / updated / deleted), detail
+   (a JSON string: the fields set, the fields changed, or the deleted row) and
+   actor ("master", "user:<email>" or "app:<name>"). */
+const ACTIVITY_SHOWN = 12;     // rows shown on the Overview
+const ACTIVITY_FETCH = 50;     // rows fetched, so updates can borrow a name from an earlier row
+const ENTITY = { tasks: 'Task', clients: 'Client', projects: 'Project', ventures: 'Venture' };
+const VENTURE_STATUSES = [['active', 'Active'], ['paused', 'Paused'], ['archived', 'Archived']];
+const parseDetail = a => {
+  if (a.detail && typeof a.detail === 'object') return a.detail;
+  try { const d = JSON.parse(a.detail); return d && typeof d === 'object' ? d : {}; } catch { return {}; }
+};
+const short = (s, n = 60) => { s = String(s); return s.length > n ? s.slice(0, n - 1) + '\u2026' : s; };
+/* One changed field in plain words, e.g. "marked done", "stage: Proposal", "due Oct 12". */
+function changeWords(type, k, v) {
+  const none = v == null || v === '';
+  switch (k) {
+    case 'status':
+      if (type === 'tasks') return v === 'done' ? 'marked done' : 'status: ' + labelOf(TASK_STATUSES, v);
+      return 'status: ' + labelOf(type === 'projects' ? PROJECT_STATUSES : VENTURE_STATUSES, v);
+    case 'stage': return 'stage: ' + labelOf(STAGES, v);
+    case 'phase': return none ? 'phase cleared' : 'phase: ' + labelOf(PHASES, v);
+    case 'priority': return 'priority: ' + prioLabel(v);
+    case 'filter_tag': return none ? 'tag cleared' : 'tag: ' + labelOf(TAGS, v);
+    case 'due_date': return none ? 'due date cleared' : 'due ' + fmtDate(v);
+    case 'start_date': return none ? 'start date cleared' : 'starts ' + fmtDate(v);
+    case 'value_cents': return none ? 'value cleared' : 'value: ' + money(v);
+    case 'venture_id': return 'moved to ' + ventureName(v);
+    case 'client_id': return none ? 'client removed' : 'client changed';
+    case 'project_id': return none ? 'project removed' : 'project changed';
+    case 'title': case 'name': return 'renamed';
+    case 'notes': case 'description': return 'notes edited';
+    case 'contact_name': return 'contact changed';
+    default: return k.replace(/_/g, ' ') + ' changed';
+  }
+}
+const actorWords = s => !s ? '' : s === 'master' ? 'by master key' : s.startsWith('app:') ? 'by app ' + s.slice(4) : s.startsWith('user:') ? 'by ' + s.slice(5) : 'by ' + s;
+function activityBlock(rows) {
+  if (rows === null) return null;   // no permission: hide quietly
+  /* Updates only carry the changed fields, so look for the record's name in other rows (newest first). */
+  const names = new Map();
+  for (const a of rows) {
+    const d = parseDetail(a), n = d.title || d.name, k = a.entity_type + ':' + a.entity_id;
+    if (n && !names.has(k)) names.set(k, String(n));
+  }
+  const item = a => {
+    const d = parseDetail(a);
+    const name = names.get(a.entity_type + ':' + a.entity_id);
+    const kind = ENTITY[a.entity_type] || String(a.entity_type || 'Record');
+    const changes = a.action === 'updated'
+      ? Object.entries(d).filter(([k]) => !['id', 'created_at', 'updated_at', 'completed_at'].includes(k)).map(([k, v]) => changeWords(a.entity_type, k, v))
+      : [];
+    const vId = a.action !== 'updated' ? d.venture_id : null;
+    return h('li', {}, h('div', { class: 'grow' },
+      h('div', { class: 'small' }, h('b', {}, kind + ' ' + (a.action || 'changed')), ': ', name ? short(name) : '#' + (a.entity_id ?? '?')),
+      h('div', { class: 'meta' }, [changes.join(', '), vId && !selectedVenture() ? ventureName(vId) : '', timeAgo(a.created_at), actorWords(a.actor)].filter(Boolean).join(' \u00b7 '))));
+  };
+  const shown = rows.slice(0, ACTIVITY_SHOWN);
+  return h('section', { class: 'block' }, h('h2', { class: 'h2' }, 'Recent activity', h('span', { class: 'mono' }, 'all ventures')),
+    h('div', { class: 'panel' }, shown.length ? h('ul', { class: 'rows' }, shown.map(item)) : h('div', { class: 'empty' }, h('b', {}, 'No activity yet.'))));
+}
+
+/* ---------- 9b Clients ---------- */
+const clientsScreen = {
+  title: 'Clients', stage: '', q: '',
+  async load() {
+    const v = ventureParam();
+    const [clients, projects] = await Promise.all([need('/clients', { ...v, limit: LIST_LIMIT }), maybe('/projects', { ...v, limit: LIST_LIMIT }, 'projects:read')]);
+    return { clients: clients || [], projects };
+  },
+  draw(data) {
+    const me = clientsScreen, writable = can('clients:write');
+    const counts = Object.fromEntries(STAGES.map(([k]) => [k, data.clients.filter(c => c.stage === k).length]));
+    const q = me.q.toLowerCase();
+    const rows = data.clients
+      .filter(c => !me.stage || c.stage === me.stage)
+      .filter(c => !q || [c.name, c.contact_name, c.email, c.phone, c.source, c.notes].some(x => x && String(x).toLowerCase().includes(q)))
+      .sort(byName);
+    const projCount = id => data.projects ? data.projects.filter(p => p.client_id === id).length : null;
+    const next = s => ({ lead: 'contacted', contacted: 'proposal', proposal: 'active' })[s];
+
+    const seg = h('div', { class: 'seg', role: 'group', 'aria-label': 'Filter by stage' },
+      [['', 'All', data.clients.length]].concat(STAGES.map(([k, l]) => [k, l, counts[k]])).map(([k, l, n]) =>
+        h('button', { type: 'button', 'aria-pressed': String(me.stage === k), 'data-fk': 'stage-' + k, onclick: () => { me.stage = k; redraw(); } }, l, h('span', { class: 'c' }, String(n)))));
+    const search = h('input', { id: 'client-search', type: 'search', placeholder: 'Name, email, notes\u2026', value: me.q, 'data-fk': 'client-search' });
+    search.addEventListener('input', () => { me.q = search.value; redraw(); });
+
+    const tr = c => {
+      const n = next(c.stage);
+      return h('tr', {},
+        h('td', {}, h('button', { class: 'linkbtn name', type: 'button', 'data-fk': 'c-' + c.id, onclick: () => clientForm(c) }, c.name),
+          h('div', { class: 'tmeta' }, ventTag(c.venture_id), c.source ? h('span', {}, 'via ' + c.source) : null),
+          c.notes ? h('div', { class: 'snip' }, c.notes) : null),
+        h('td', { 'data-label': 'Stage' }, h('div', { class: 'stage-cell' },
+          inlineSelect(STAGES, c.stage, 'Stage for ' + c.name, (val, el) => quiet(write('PATCH', `/clients/${c.id}`, { stage: val }, `Moved to ${labelOf(STAGES, val)}.`, el)), 'cs-' + c.id, writable),
+          n && writable ? h('button', { class: 'btn sm', type: 'button', 'data-fk': 'cn-' + c.id, title: 'Move to ' + labelOf(STAGES, n), 'aria-label': `Move ${c.name} to ${labelOf(STAGES, n)}`,
+            onclick: e => quiet(write('PATCH', `/clients/${c.id}`, { stage: n }, `Moved to ${labelOf(STAGES, n)}.`, e.currentTarget)) }, icon('next'), labelOf(STAGES, n)) : null)),
+        h('td', { 'data-label': 'Contact', class: 'contact' + (!c.contact_name && !c.email && !c.phone ? ' none' : '') },
+          c.contact_name ? h('div', {}, c.contact_name) : null,
+          c.email ? h('div', { class: 'meta' }, h('a', { href: 'mailto:' + c.email, title: c.email }, c.email)) : null,
+          c.phone ? h('div', { class: 'meta' }, h('a', { href: 'tel:' + String(c.phone).replace(/[^\d+]/g, '') }, c.phone)) : null,
+          !c.contact_name && !c.email && !c.phone ? h('span', { class: 'muted' }, '\u2014') : null),
+        h('td', { 'data-label': 'Projects', class: 'count' }, projCount(c.id) === null ? '\u2014' : String(projCount(c.id))),
+        h('td', { class: 'r' }, h('div', { class: 'cell-actions' },
+          can('projects:write') ? h('button', { class: 'btn sm', type: 'button', 'data-fk': 'cp-' + c.id, onclick: () => projectForm(null, { venture_id: c.venture_id, client_id: c.id }) }, icon('plus'), 'Project') : null,
+          h('button', { class: 'btn sm', type: 'button', 'data-fk': 'ce-' + c.id, onclick: () => clientForm(c) }, icon('edit'), writable ? 'Edit' : 'View'))));
+    };
+
+    return [
+      shead('BECS OS \u00b7 Clients \u00b7 ' + scopeLabel(), 'Clients', 'Everyone you are working with, or about to. Move them along the pipeline right from the list.',
+        writable ? h('button', { class: 'btn primary', type: 'button', onclick: () => clientForm(null, {}) }, icon('plus'), 'Add client') : null),
+      h('div', { class: 'filters' }, h('div', { class: 'f wide' }, h('span', {}, 'Stage'), seg), h('div', { class: 'f' }, h('label', { for: 'client-search' }, 'Search clients'), search)),
+      h('div', { class: 'panel' }, rows.length
+        ? h('table', { class: 'tbl' }, h('thead', {}, h('tr', {}, ['Client', 'Stage', 'Contact', 'Projects', ''].map(x => h('th', { scope: 'col' }, x ? x : h('span', { class: 'sr' }, 'Actions'))))), h('tbody', {}, rows.map(tr)))
+        : h('div', { class: 'empty' }, h('b', {}, data.clients.length ? 'No clients match.' : 'No clients yet.'), data.clients.length ? 'Try another stage or search.' : 'Add your first client to start the pipeline.'))
+    ];
+  }
+};
+
+/* ---------- 9c Projects ---------- */
+const projectsScreen = {
+  title: 'Projects', status: 'current',
+  async load() {
+    const v = ventureParam();
+    const [projects, clients, tasks] = await Promise.all([
+      need('/projects', { ...v, limit: LIST_LIMIT }),
+      maybe('/clients', { ...v, limit: LIST_LIMIT }, 'clients:read'),
+      maybe('/tasks', { ...v, limit: LIST_LIMIT }, 'tasks:read')]);
+    return { projects: projects || [], clients, tasks };
+  },
+  draw(data) {
+    const me = projectsScreen, writable = can('projects:write');
+    const CURRENT = ['planning', 'active', 'paused'];
+    const filters = [['current', 'Current'], ...PROJECT_STATUSES, ['all', 'All']];
+    const count = k => data.projects.filter(p => k === 'all' || (k === 'current' ? CURRENT.includes(p.status) : p.status === k)).length;
+    const list = data.projects.filter(p => me.status === 'all' || (me.status === 'current' ? CURRENT.includes(p.status) : p.status === me.status))
+      .sort((a, b) => (a.priority || 3) - (b.priority || 3) || String(a.due_date || '9999').localeCompare(String(b.due_date || '9999')) || byName(a, b));
+    const clientName = id => data.clients ? ((data.clients.find(c => c.id === id) || {}).name || (id ? 'Client #' + id : 'No client')) : (id ? 'Client #' + id : 'No client');
+
+    const card = p => {
+      const ts = data.tasks ? data.tasks.filter(t => t.project_id === p.id) : null;
+      const pct = ts && ts.length ? Math.round(ts.filter(t => t.status === 'done').length / ts.length * 100) : 0;
+      const late = p.due_date && dayDiff(p.due_date) < 0 && !['done', 'cancelled'].includes(p.status);
+      const phaseI = PHASES.findIndex(([k]) => k === p.phase);
+      const phaseWritable = writable && ventureSlug(p.venture_id) === PHASE_VENTURE_SLUG;
+      return h('article', { class: 'pcard' },
+        h('div', { class: 'top' },
+          h('div', { style: 'min-width:0' }, h('h2', { class: 'h3' }, h('button', { class: 'linkbtn', type: 'button', 'data-fk': 'p-' + p.id, style: 'font-weight:400', onclick: () => projectForm(p) }, p.name)),
+            h('div', { class: 'tmeta' }, ventTag(p.venture_id), h('span', {}, clientName(p.client_id)))),
+          h('span', { class: 'pill p' + (p.priority || 3) }, prioLabel(p.priority))),
+        h('div', { class: 'kv' }, h('span', {}, 'Value ', h('b', {}, p.value_cents != null ? money(p.value_cents) : '\u2014')),
+          h('span', { class: late ? 'late' : null }, p.due_date ? (late ? 'Was due ' : 'Due ') + fmtDate(p.due_date) : 'No due date')),
+        p.start_date ? h('div', { class: 'kv' }, h('span', {}, 'Started ' + fmtDate(p.start_date))) : null,
+        ts ? h('div', {}, h('div', { class: 'kv', style: 'margin-bottom:4px' }, h('span', {}, `${ts.filter(t => t.status === 'done').length} of ${ts.length} tasks done`), h('span', {}, pct + '%')),
+          h('div', { class: 'bar', role: 'img', 'aria-label': pct + ' percent of tasks done' }, h('i', { style: `width:${pct}%` }))) : null,
+        /* P.E.S. strip: only on projects that have a phase. */
+        p.phase ? h('div', { class: 'phase', role: 'group', 'aria-label': 'P.E.S. phase for ' + p.name },
+          PHASES.map(([k, l], i) => phaseWritable
+            ? h('button', { type: 'button', class: i < phaseI ? 'past' : i === phaseI ? 'on' : null, 'aria-pressed': String(i === phaseI), 'data-fk': `ph-${p.id}-${k}`,
+                onclick: e => { if (k !== p.phase) quiet(write('PATCH', `/projects/${p.id}`, { phase: k }, `Phase set to ${l}.`, e.currentTarget)); } }, l)
+            : h('span', { class: i < phaseI ? 'past' : i === phaseI ? 'on' : null, 'aria-current': i === phaseI ? 'step' : null }, l))) : null,
+        p.notes ? h('div', { class: 'snip' }, p.notes) : null,
+        h('div', { class: 'foot' },
+          inlineSelect(PROJECT_STATUSES, p.status, 'Status for ' + p.name, (val, el) => quiet(write('PATCH', `/projects/${p.id}`, { status: val }, `Status set to ${labelOf(PROJECT_STATUSES, val)}.`, el)), 'ps-' + p.id, writable),
+          h('span', { style: 'flex:1' }),
+          can('tasks:write') ? h('button', { class: 'btn sm', type: 'button', 'data-fk': 'pt-' + p.id, onclick: () => taskForm(null, { venture_id: p.venture_id, project_id: p.id }) }, icon('plus'), 'Task') : null,
+          h('button', { class: 'btn sm', type: 'button', 'data-fk': 'pe-' + p.id, onclick: () => projectForm(p) }, icon('edit'), writable ? 'Edit' : 'View')));
+    };
+
+    return [
+      shead('BECS OS \u00b7 Projects \u00b7 ' + scopeLabel(), 'Projects', 'Every engagement, its value and how far along it is. BECS projects move through Plan, Evolve and Succeed.',
+        writable ? h('button', { class: 'btn primary', type: 'button', onclick: () => projectForm(null, {}) }, icon('plus'), 'Add project') : null),
+      h('div', { class: 'filters' }, h('div', { class: 'f wide' }, h('span', {}, 'Status'),
+        h('div', { class: 'seg', role: 'group', 'aria-label': 'Filter by status' }, filters.map(([k, l]) =>
+          h('button', { type: 'button', 'aria-pressed': String(me.status === k), 'data-fk': 'pf-' + k, onclick: () => { me.status = k; redraw(); } }, l, h('span', { class: 'c' }, String(count(k)))))))),
+      list.length ? h('div', { class: 'pcards' }, list.map(card))
+        : h('div', { class: 'panel empty' }, h('b', {}, data.projects.length ? 'No projects with this status.' : 'No projects yet.'), data.projects.length ? 'Pick another status above.' : 'Start one with Add project, or from a client row.')
+    ];
+  }
+};
+
+/* ---------- 9d Tasks (the most used screen) ---------- */
+const tasksScreen = {
+  title: 'Tasks', status: 'open', tag: '', priority: '', project: '', q: '', quickVenture: '',
+  async load() {
+    const me = tasksScreen, v = ventureParam();
+    const statuses = me.status === 'open' ? ['todo', 'doing'] : me.status === 'all' ? [null] : [me.status];
+    const [lists, projects] = await Promise.all([
+      Promise.all(statuses.map(s => need('/tasks', { ...v, status: s, limit: LIST_LIMIT }))),
+      maybe('/projects', { ...v, limit: LIST_LIMIT }, 'projects:read')]);
+    return { tasks: lists.flat().filter(Boolean), projects };
+  },
+  draw(data) {
+    const me = tasksScreen, writable = can('tasks:write'), t0 = today();
+    const projName = id => data.projects ? ((data.projects.find(p => p.id === id) || {}).name || 'Project #' + id) : 'Project #' + id;
+    const q = me.q.toLowerCase();
+    const shown = data.tasks
+      .filter(t => !me.tag || (me.tag === '_none' ? !t.filter_tag : t.filter_tag === me.tag))
+      .filter(t => !me.priority || String(t.priority || 3) === me.priority)
+      .filter(t => !me.project || (me.project === '_none' ? !t.project_id : String(t.project_id) === me.project))
+      .filter(t => !q || [t.title, t.notes].some(x => x && String(x).toLowerCase().includes(q)));
+
+    /* Sort: overdue first, then by due date (no date last), then priority. Done tasks go last, newest first. */
+    const group = t => t.status === 'done' ? 4 : !t.due_date ? 3 : t.due_date < t0 ? 0 : t.due_date === t0 ? 1 : 2;
+    shown.sort((a, b) => group(a) - group(b)
+      || (group(a) === 4 ? String(b.completed_at || '').localeCompare(String(a.completed_at || '')) : 0)
+      || String(a.due_date || '').localeCompare(String(b.due_date || ''))
+      || (a.priority || 3) - (b.priority || 3)
+      || (b.id - a.id));
+    const GROUPS = [['overdue', 'Overdue'], ['today', 'Due today'], ['upcoming', 'Coming up'], ['nodate', 'No due date'], ['done', 'Done']];
+
+    const row = t => {
+      const late = group(t) === 0;
+      return h('li', { class: 'trow' + (late ? ' is-late' : '') + (t.status === 'done' ? ' is-done' : '') },
+        taskCheck(t),
+        h('div', { class: 'tmain' },
+          h('button', { class: 'linkbtn', type: 'button', 'data-fk': 't-' + t.id, onclick: () => taskForm(t) }, t.title),
+          h('div', { class: 'tmeta' },
+            ventTag(t.venture_id),
+            t.project_id ? h('span', {}, projName(t.project_id)) : null,
+            t.due_date ? h('span', { class: late ? 'late' : null }, t.status === 'done' ? 'Was due ' + fmtDate(t.due_date) : dueText(t.due_date)) : null,
+            t.status === 'done' && t.completed_at ? h('span', {}, 'Done ' + timeAgo(t.completed_at)) : null),
+          t.notes ? h('div', { class: 'snip' }, t.notes) : null),
+        h('div', { class: 'tside' },
+          late ? h('span', { class: 'pill late' }, 'Overdue') : null,
+          h('span', { class: 'pill p' + (t.priority || 3) }, prioLabel(t.priority)),
+          t.filter_tag ? h('span', { class: 'pill tag' }, labelOf(TAGS, t.filter_tag)) : null,
+          inlineSelect(TASK_STATUSES, t.status, 'Status for ' + t.title, (val, el) => setTask(t, { status: val }, `Status set to ${labelOf(TASK_STATUSES, val)}.`, el), 'ts-' + t.id, writable)));
+    };
+
+    /* Filters */
+    const sel = (label, value, options, onPick, fk) => {
+      const s = h('select', { id: fk, 'data-fk': fk, value: String(value ?? '') }, options.map(([k, l]) => opt(k, l)));
+      s.addEventListener('change', () => onPick(s.value));
+      return h('div', { class: 'f' }, h('label', { for: fk }, label), s);
+    };
+    const statusSeg = h('div', { class: 'seg', role: 'group', 'aria-label': 'Filter by status' },
+      [['open', 'Open'], ['todo', 'To do'], ['doing', 'Doing'], ['done', 'Done'], ['all', 'All']].map(([k, l]) =>
+        h('button', { type: 'button', 'aria-pressed': String(me.status === k), 'data-fk': 'tf-' + k, onclick: () => { if (me.status !== k) { me.status = k; refresh(); } } }, l)));
+    const projOptions = [['', 'All projects'], ['_none', 'No project']].concat((data.projects || []).slice().sort(byName).map(p => [p.id, p.name]));
+    const search = h('input', { id: 'task-search', type: 'search', placeholder: 'Title or notes\u2026', value: me.q, 'data-fk': 'task-search' });
+    search.addEventListener('input', () => { me.q = search.value; redraw(); });
+    const anyFilter = me.tag || me.priority || me.project || me.q;
+
+    /* Quick add: type a title, press Enter. Uses the current filters as defaults
+       so the new task shows up in the list you are looking at. */
+    const qInput = h('input', { type: 'text', placeholder: 'Add a task and press Enter', 'aria-label': 'New task title', maxlength: 300, 'data-fk': 'quick-add' });
+    const needVenturePick = !selectedVenture() && !(me.project && me.project !== '_none') && VENTURES.length;
+    const qVenture = needVenturePick ? h('select', { 'aria-label': 'Venture for the new task', 'data-fk': 'quick-venture' },
+      VENTURES.filter(x => x.status !== 'archived').map(x => opt(x.id, x.name))) : null;
+    if (qVenture) qVenture.value = String(me.quickVenture || defaultVenture());
+    const qBtn = h('button', { class: 'btn', type: 'submit' }, icon('plus'), 'Add');
+    const quick = h('form', { class: 'quickadd', 'aria-label': 'Quick add task' }, qInput, qVenture, qBtn);
+    quick.addEventListener('submit', async ev => {
+      ev.preventDefault();
+      const title = qInput.value.trim();
+      if (!title) { qInput.focus(); return; }
+      if (qBtn.disabled) return;
+      const proj = me.project && me.project !== '_none' && data.projects ? data.projects.find(p => String(p.id) === me.project) : null;
+      const venture_id = proj ? proj.venture_id : Number(selectedVenture() || (qVenture && qVenture.value) || defaultVenture());
+      if (!venture_id) { toast('Pick a venture first (top of the page).', true); return; }
+      const body = { title, venture_id };
+      if (proj) body.project_id = proj.id;
+      if (me.priority) body.priority = Number(me.priority);
+      if (me.tag && me.tag !== '_none') body.filter_tag = me.tag;
+      if (me.status === 'doing' || me.status === 'done') body.status = me.status;
+      if (qVenture) me.quickVenture = qVenture.value;
+      storeSet('local', STORE_LAST_VENTURE, String(venture_id));
+      qInput.disabled = true; qBtn.disabled = true;
+      try {
+        await write('POST', '/tasks', body, 'Task added.');
+        if (qInput.isConnected) qInput.value = '';            // list could not refresh: still clear the box
+      } catch { /* message already shown; the typed title is kept */ }
+      if (qInput.isConnected) { qInput.disabled = false; qBtn.disabled = false; }
+      const box = document.querySelector('#app [data-fk="quick-add"]');
+      if (box) box.focus();
+    });
+
+    const groups = GROUPS.map(([k, l], gi) => {
+      const items = shown.filter(t => group(t) === gi);
+      return items.length ? h('section', { class: 'tgroup' + (k === 'overdue' ? ' overdue' : ''), 'aria-label': l },
+        h('h2', {}, `${l} \u00b7 ${items.length}`), h('ul', { class: 'tlist' }, items.map(row))) : null;
+    });
+
+    return [
+      shead('BECS OS \u00b7 Tasks \u00b7 ' + scopeLabel(), 'Tasks', 'Overdue first, then by due date and priority. Tick the box when it is done.',
+        writable ? h('button', { class: 'btn primary', type: 'button', onclick: () => taskForm(null, { project_id: me.project && me.project !== '_none' ? Number(me.project) : undefined, venture_id: (data.projects || []).find(p => String(p.id) === me.project)?.venture_id }) }, icon('plus'), 'Add task') : null),
+      writable ? quick : null,
+      h('div', { class: 'filters' },
+        h('div', { class: 'f wide' }, h('span', {}, 'Status'), statusSeg),
+        sel('Why it matters', me.tag, [['', 'All tags'], ...TAGS, ['_none', 'No tag']], v => { me.tag = v; redraw(); }, 'f-tag'),
+        sel('Priority', me.priority, [['', 'All'], ...PRIORITIES], v => { me.priority = v; redraw(); }, 'f-prio'),
+        data.projects ? sel('Project', me.project, projOptions, v => { me.project = v; redraw(); }, 'f-proj') : null,
+        h('div', { class: 'f' }, h('label', { for: 'task-search' }, 'Search'), search),
+        anyFilter ? h('button', { class: 'btn sm', type: 'button', style: 'margin-bottom:2px', onclick: () => { me.tag = me.priority = me.project = me.q = ''; redraw(); } }, 'Clear filters') : null),
+      shown.length ? groups
+        : h('div', { class: 'panel empty' }, h('b', {}, data.tasks.length ? 'No tasks match these filters.' : (me.status === 'open' ? 'No open tasks.' : 'No tasks here.')),
+            data.tasks.length ? 'Clear a filter to see more.' : 'Type a title above and press Enter to add one.')
+    ];
+  }
+};
+
+/* ---------- 9e Keys (owner only) ---------- */
+const keysScreen = {
+  title: 'Keys',
+  async load() { return { keys: (await need('/admin/keys')) || [] }; },
+  draw({ keys }) {
+    const apps = new Map();
+    for (const k of keys) {
+      const a = apps.get(k.app) || { app: k.app, scopes: new Set(), count: 0, created: [] };
+      (k.scopes || []).forEach(s => a.scopes.add(s)); a.count++; a.created.push(k.created_at);
+      apps.set(k.app, a);
+    }
+    const list = [...apps.values()].sort((a, b) => String(a.app).localeCompare(String(b.app)));
+    const revoke = async (a, btn) => {
+      const yes = await confirmBox({ title: 'Revoke access?', ok: 'Revoke', body: `Every key issued to "${a.app}" (${a.count}) stops working immediately. Anything using it will get "unauthorized" until you give it a new key.` });
+      if (!yes) return;
+      quiet(write('DELETE', `/admin/keys/${encodeURIComponent(a.app)}`, undefined, `Keys for ${a.app} revoked.`, btn));
+    };
+    return [
+      shead('BECS OS \u00b7 Keys', 'App keys', 'Give each app or AI assistant its own key with only the rights it needs. Revoke a key here when an app should stop.',
+        h('button', { class: 'btn primary', type: 'button', onclick: newKeyForm }, icon('plus'), 'Create key')),
+      h('div', { class: 'panel' }, list.length
+        ? h('table', { class: 'tbl' },
+            h('thead', {}, h('tr', {}, ['App', 'What it can do', 'Created', ''].map(x => h('th', { scope: 'col' }, x || h('span', { class: 'sr' }, 'Actions'))))),
+            h('tbody', {}, list.map(a => h('tr', {},
+              h('td', {}, h('div', { class: 'name nowrap' }, a.app), a.count > 1 ? h('div', { class: 'meta' }, a.count + ' keys') : null),
+              h('td', { 'data-label': 'Scopes' }, h('div', { class: 'tmeta' }, [...a.scopes].sort().map(s => h('span', { class: 'pill scope' + (s.endsWith(':write') ? ' p2' : '') }, s)))),
+              h('td', { 'data-label': 'Created', class: 'mono nowrap' }, a.created.filter(Boolean).length ? a.created.filter(Boolean).map(t => h('div', {}, fmtTs(t))) : '\u2014'),
+              h('td', { class: 'r' }, h('div', { class: 'cell-actions' }, h('button', { class: 'btn sm danger', type: 'button', 'data-fk': 'rv-' + a.app, onclick: e => revoke(a, e.currentTarget) }, 'Revoke')))))))
+        : h('div', { class: 'empty' }, h('b', {}, 'No app keys yet.'), 'Create one for each app that should read or write BECS OS.'))
+    ];
+  }
+};
+
+function newKeyForm() {
+  const dlg = $('#dlg');
+  const app = h('input', { id: 'k-app', type: 'text', maxlength: 100, autocomplete: 'off', spellcheck: 'false', 'aria-describedby': 'k-app-hint k-app-err' });
+  const appErr = h('span', { class: 'ferr', id: 'k-app-err' });
+  const general = h('div', { class: 'derr', role: 'alert' });
+  const boxes = {};
+  const box = (scope, text) => { boxes[scope] = h('input', { type: 'checkbox', value: scope }); return h('label', {}, boxes[scope], h('span', {}, text)); };
+  const grid = h('div', { class: 'scopes', role: 'group', 'aria-label': 'What this key may do' },
+    h('div', { class: 'hd' }, 'Area'), h('div', { class: 'hd' }, 'Read'), h('div', { class: 'hd' }, 'Write'),
+    SCOPE_TABLES.flatMap(([t, l, r, w]) => [
+      h('div', {}, h('div', {}, h('b', {}, l), h('div', { class: 'desc' }, r + '. Write: ' + w.toLowerCase() + '.'))),
+      h('div', {}, box(t + ':read', 'Read')), h('div', {}, box(t + ':write', 'Write'))]),
+    h('div', { class: 'last' }, h('div', {}, h('b', {}, 'Activity log'), h('div', { class: 'desc' }, 'See who changed what, and when.'))),
+    h('div', { class: 'last' }, box('activity:read', 'Read')), h('div', { class: 'last' }));
+  const preset = list => () => { for (const [s, b] of Object.entries(boxes)) b.checked = list.includes(s); };
+  const presets = h('div', { class: 'actions' },
+    h('button', { class: 'btn sm', type: 'button', onclick: preset(ALL_READ) }, 'Read everything'),
+    h('button', { class: 'btn sm', type: 'button', onclick: preset(ALL_SCOPES) }, 'Read and write everything'),
+    h('button', { class: 'btn sm', type: 'button', onclick: preset(['tasks:read', 'tasks:write', 'projects:read', 'ventures:read']) }, 'Tasks only'),
+    h('button', { class: 'btn sm', type: 'button', onclick: preset([]) }, 'Clear'));
+  const save = h('button', { class: 'btn primary', type: 'submit' }, 'Create key');
+  const form = h('form', { class: 'dform', novalidate: true },
+    h('div', {}, h('div', { class: 'eyebrow' }, 'New app key'), h('h2', { class: 'h2', id: 'dlgTitle', style: 'margin-top:4px' }, 'Create key'), h('div', { class: 'lime-rule' })),
+    h('div', { class: 'field' }, h('div', { class: 'lbl' }, h('label', { for: 'k-app' }, 'App name'), h('span', { class: 'req', 'aria-hidden': 'true' }, '*')), app,
+      h('span', { class: 'hint', id: 'k-app-hint' }, 'Short lowercase name, e.g. leaa-portal. Using a name that already exists adds another key for that app.'), appErr),
+    h('div', { class: 'field' }, h('span', { style: 'font-weight:700;font-size:.875rem' }, 'What it may do'), presets, grid),
+    general,
+    h('div', { class: 'dfoot' }, h('div', { class: 'right' }, h('button', { class: 'btn', type: 'button', onclick: () => dlg.close() }, 'Cancel'), save)));
+  form.addEventListener('submit', async ev => {
+    ev.preventDefault();
+    if (save.disabled) return;
+    appErr.textContent = ''; general.textContent = ''; app.removeAttribute('aria-invalid');
+    const name = app.value.trim();
+    const scopes = Object.values(boxes).filter(b => b.checked).map(b => b.value);
+    if (!name) { appErr.textContent = 'Required.'; app.setAttribute('aria-invalid', 'true'); app.focus(); return; }
+    if (!scopes.length) { general.textContent = 'Tick at least one box, or use a preset.'; return; }
+    save.disabled = true; save.textContent = 'Creating\u2026';
+    try {
+      const out = await api('POST', '/admin/keys', { app: name, scopes });
+      showNewKey(out, name);
+      quiet(refresh());
+    } catch (e) {
+      if (e.status === 401) return;
+      if (e.fields && e.fields.app) { appErr.textContent = String(e.fields.app); app.setAttribute('aria-invalid', 'true'); }
+      general.textContent = e.message + (e.fields ? ' ' + Object.entries(e.fields).filter(([k]) => k !== 'app').map(([k, v]) => `${k}: ${v}`).join(' ') : '');
+      save.disabled = false; save.textContent = 'Create key';
+    }
+  });
+  dlg.replaceChildren(form);
+  openModal(dlg, app);
+}
+
+/* Show the raw key exactly once. It is only in this dialog; closing it removes it from the page. */
+function showNewKey(out, appName) {
+  const dlg = $('#dlg');
+  const raw = out && typeof out === 'object' ? (out.key || out.raw_key || out.token || '') : (typeof out === 'string' ? out : '');
+  const field = h('input', { id: 'k-raw', type: 'text', readOnly: true, value: raw, 'aria-describedby': 'k-warn', spellcheck: 'false' });
+  const copied = h('span', { class: 'hint', role: 'status' });
+  const copy = h('button', { class: 'btn solid', type: 'button', onclick: async () => {
+    field.select();
+    try { await navigator.clipboard.writeText(raw); copied.textContent = 'Copied to the clipboard.'; }
+    catch { copied.textContent = 'Press Ctrl+C (or long-press and Copy) to copy the selected key.'; }
+  } }, icon('copy'), 'Copy');
+  const done = h('button', { class: 'btn primary', type: 'button', onclick: () => dlg.close() }, 'I have saved it');
+  dlg.replaceChildren(h('div', { class: 'dform' },
+    h('div', {}, h('div', { class: 'eyebrow' }, 'Key created for ' + appName), h('h2', { class: 'h2', id: 'dlgTitle', style: 'margin-top:4px' }, 'Copy this key now'), h('div', { class: 'lime-rule' })),
+    h('p', { class: 'warn', id: 'k-warn' }, 'This is the only time the key is shown. It cannot be shown again. If you lose it, revoke the app and create a new key.'),
+    raw ? h('div', { class: 'field' }, h('label', { for: 'k-raw' }, 'Key'), h('div', { class: 'keybox' }, field, copy), copied)
+        : h('p', { class: 'derr' }, 'The server did not return the key text. Revoke this app and try again.'),
+    h('p', { class: 'small muted' }, 'Give it to the app as a header: Authorization: Bearer <key>. Never paste it into a web page or a shared document.'),
+    h('div', { class: 'dfoot' }, h('div', { class: 'right' }, done))));
+  dlg.addEventListener('close', () => { if (field.isConnected) field.value = ''; dlg.replaceChildren(); }, { once: true });
+  (raw ? copy : done).focus();
+  if (raw) field.select();
+}
+
+/* =====================================================================
+   10  ROUTER AND START-UP
+   ===================================================================== */
+const SCREENS = { overview, clients: clientsScreen, projects: projectsScreen, tasks: tasksScreen, keys: keysScreen };
+let renderToken = 0, current = null, cache = null;
+const routeName = () => { const r = location.hash.replace(/^#\/?/, ''); return SCREENS[r] && (r !== 'keys' || isAdmin()) ? r : 'overview'; };
+
+/* Full load of the current screen (on navigation or venture change). */
+async function route() {
+  if (!SESSION.me) return;
+  const name = routeName(), screen = SCREENS[name];
+  if (`#/${name}` !== location.hash) history.replaceState(null, '', `#/${name}`);
+  document.querySelectorAll('#nav a').forEach(a => a.dataset.r === name ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'));
+  document.title = `${screen.title} \u00b7 BECS OS`;
+  const changed = current !== name; current = name;
+  const token = ++renderToken;
+  if (changed || !cache) $('#app').replaceChildren(h('div', { class: 'loading' }, 'Loading ' + screen.title.toLowerCase() + '\u2026'));
+  try {
+    const data = await screen.load();
+    if (token !== renderToken) return;
+    cache = data; paint(screen, data, !changed);
+  } catch (e) {
+    if (token !== renderToken || e.status === 401) return;
+    cache = null;
+    const what = { overview: 'the overview', clients: 'clients', projects: 'projects', tasks: 'tasks', keys: 'app keys' }[name];
+    const scope = { clients: 'clients:read', projects: 'projects:read', tasks: 'tasks:read' }[name];
+    $('#app').replaceChildren(shead('BECS OS', screen.title, null), errorNotice(e, what, scope));
+  }
+  if (changed) $('#app').focus({ preventScroll: true });
+}
+/* Re-fetch the current screen after a write; keeps scroll position and focus. */
+async function refresh() {
+  if (!SESSION.me || !current) return;
+  const screen = SCREENS[current], token = ++renderToken;
+  try {
+    const data = await screen.load();
+    if (token !== renderToken) return;
+    cache = data; paint(screen, data, true);
+  } catch (e) { if (e.status !== 401 && token === renderToken) toast('Saved, but the list could not be refreshed: ' + e.message, true); }
+}
+/* Redraw from the data already loaded (filters, search). */
+function redraw() { if (cache && current) paint(SCREENS[current], cache, true); }
+function paint(screen, data, keepFocus) {
+  const fk = keepFocus && document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.fk : null;
+  const caret = fk && document.activeElement.selectionStart != null ? document.activeElement.selectionStart : null;
+  const y = window.scrollY;
+  $('#app').replaceChildren(...[screen.draw(data)].flat(Infinity).filter(Boolean));
+  if (keepFocus) {
+    window.scrollTo(0, y);
+    const el = fk && document.querySelector(`#app [data-fk="${CSS.escape(fk)}"]`);
+    if (el) { el.focus({ preventScroll: true }); if (caret != null && el.setSelectionRange) try { el.setSelectionRange(caret, caret); } catch { /* not a text input */ } }
+  }
+}
+window.addEventListener('hashchange', route);
+/* Clicking the tab you are already on reloads it (no hashchange fires), so
+   changes made by apps and assistants show up without reloading the page. */
+document.addEventListener('click', ev => {
+  const a = ev.target.closest && ev.target.closest('#nav a, .brand');
+  if (a && a.getAttribute('href') === location.hash) { ev.preventDefault(); route(); }
+});
+boot();
 </script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 // GET /api/dashboard: every figure, from seeded data, with and without ?venture_id=.
-// "Today" is the UTC date, the same as the server's SQLite date('now').
+// "Today" is the UTC date unless the caller sends ?today= (see the last block).
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import { create, day, expectErrorShape, get } from './helpers';
@@ -230,4 +230,56 @@ describe('dashboard for one venture', () => {
     const { call } = await import('./helpers');
     expectErrorShape(await call('/api/dashboard', { method: 'POST', body: {} }), 405, 'method_not_allowed');
   });
+});
+
+// The owner is not in the UTC time zone. The console sends its own date as ?today=
+// so "overdue" and "due soon" follow his day.
+describe('dashboard with the caller\'s own date (?today=)', () => {
+  const titles = (rows: { title: string }[]) => rows.map((r) => r.title);
+
+  it('treats a task due on the UTC date as due soon, not overdue, when the caller is still on yesterday', async () => {
+    await create('tasks', { venture_id: 1, title: 'due utc today', due_date: day(0) });
+    await create('tasks', { venture_id: 1, title: 'due utc yesterday', due_date: day(-1) });
+    await create('tasks', { venture_id: 1, title: 'due two days ago', due_date: day(-2) });
+
+    const d = (await get(`/api/dashboard?today=${day(-1)}`)).body.data;
+    expect(titles(d.overdue)).toEqual(['due two days ago']);
+    expect(titles(d.due_soon)).toEqual(['due utc yesterday', 'due utc today']);
+  });
+
+  it('counts a task due on the UTC date as overdue when the caller is already on tomorrow', async () => {
+    await create('tasks', { venture_id: 1, title: 'due utc today', due_date: day(0) });
+    await create('tasks', { venture_id: 1, title: 'due in 8 days', due_date: day(8) });
+
+    const d = (await get(`/api/dashboard?today=${day(1)}`)).body.data;
+    expect(titles(d.overdue)).toEqual(['due utc today']);
+    // The 7-day window moves with the caller's date: day 8 is now 7 days away.
+    expect(titles(d.due_soon)).toEqual(['due in 8 days']);
+  });
+
+  it('gives the same answer with the UTC date as with no date at all', async () => {
+    await create('tasks', { venture_id: 1, title: 'late', due_date: day(-1) });
+    await create('tasks', { venture_id: 1, title: 'soon', due_date: day(3) });
+    const plain = (await get('/api/dashboard')).body.data;
+    const dated = (await get(`/api/dashboard?today=${day(0)}`)).body.data;
+    expect(dated).toEqual(plain);
+    const blank = (await get('/api/dashboard?today=')).body.data;
+    expect(blank).toEqual(plain);
+  });
+
+  it('works together with ?venture_id=', async () => {
+    await create('tasks', { venture_id: 1, title: 'becs', due_date: day(0) });
+    await create('tasks', { venture_id: 2, title: 'leaa', due_date: day(0) });
+    const d = (await get(`/api/dashboard?venture_id=2&today=${day(1)}`)).body.data;
+    expect(titles(d.overdue)).toEqual(['leaa']);
+  });
+
+  it.each([day(2), day(-2), '2020-01-01', '2026-02-30', '10/04/2026', 'today', "2026-10-04' OR 1=1"])(
+    'refuses a date that is not within a day of now, or not a date: %s',
+    async (bad) => {
+      const r = await get(`/api/dashboard?today=${encodeURIComponent(bad)}`);
+      expectErrorShape(r, 400, 'invalid');
+      expect(r.body.fields.today).toBeTruthy();
+    }
+  );
 });

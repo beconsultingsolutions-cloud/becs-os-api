@@ -113,7 +113,7 @@ Rate limiting uses the Workers Rate Limiting binding `APP_LIMITER` keyed by the 
 |---|---|---|
 | GET | `/api/health` | Public. `{"ok":true,"service":"becs-os-api"}` |
 | GET | `/api/me` | Who am I. `{"data":{"kind":"master"}}`, `{"data":{"kind":"user","email":"..."}}` or `{"data":{"kind":"app","app":"...","scopes":[...]}}` |
-| GET | `/api/dashboard` | Optional `?venture_id=`. Shape below. |
+| GET | `/api/dashboard` | Optional `?venture_id=` and `?today=`. Shape below. |
 | GET | `/api/<table>` | List. Filter by any writable column (`?status=todo&venture_id=1`). `?limit=` 1..500, default 100. Newest first. |
 | POST | `/api/<table>` | Create. Body is a JSON object. Returns the row. |
 | GET | `/api/<table>/<id>` | One row or `404`. |
@@ -140,7 +140,8 @@ Rate limiting uses the Workers Rate Limiting binding `APP_LIMITER` keyed by the 
 }}
 ```
 
-- `overdue`: not done, `due_date` before today (UTC), oldest first, max 25.
+- "Today" is the UTC date unless the caller sends `?today=YYYY-MM-DD` with the date where they are. It must be a real date within one day of the UTC date, else `400 invalid`. The console always sends it, so its figures follow the owner's local day.
+- `overdue`: not done, `due_date` before today, oldest first, max 25.
 - `due_soon`: not done, `due_date` from today through today + 7 days, soonest first, max 25.
 - `active_projects` / `active_project_value_cents`: projects whose status is `planning` or `active`.
   The value is added up with SQLite `TOTAL()` and cast back to whole cents, so no stored data can make it fail.

@@ -520,22 +520,41 @@ async function dashboard(env: Env, url: URL): Promise<Response> {
     ventureId = n;
   }
 
+  // Optional ?today=YYYY-MM-DD lets the caller say what the date is where they are, so
+  // "overdue" and "due soon" follow their day, not the UTC day. It must be within one day
+  // of the UTC date (no time zone is further away than that). Without it, today is UTC.
+  const utcToday = new Date().toISOString().slice(0, 10);
+  let today = utcToday;
+  const rawToday = url.searchParams.get('today');
+  if (rawToday !== null && rawToday.trim() !== '') {
+    const t = rawToday.trim();
+    const ms = /^\d{4}-\d{2}-\d{2}$/.test(t) ? Date.parse(t + 'T00:00:00Z') : NaN;
+    const offBy = Math.abs(ms - Date.parse(utcToday + 'T00:00:00Z'));
+    if (!Number.isFinite(ms) || new Date(ms).toISOString().slice(0, 10) !== t || offBy > 86_400_000) {
+      return invalid({ today: "must be today's date as YYYY-MM-DD (within one day of the UTC date)" });
+    }
+    today = t;
+  }
+  const soonEnd = new Date(Date.parse(today + 'T00:00:00Z') + 7 * 86_400_000).toISOString().slice(0, 10);
+
   const and = ventureId ? ' AND venture_id = ?' : '';
   const bind = ventureId ? [ventureId] : [];
-  const prep = (sql: string) => env.DB.prepare(sql).bind(...bind);
+  const prep = (sql: string, ...first: unknown[]) => env.DB.prepare(sql).bind(...first, ...bind);
 
-  // "Today" is the UTC date, from SQLite's date('now').
   const [open, overdue, dueSoon, byVenture, pipeline, projects] = await env.DB.batch([
     prep(`SELECT COUNT(*) AS n FROM tasks WHERE status != 'done'${and}`),
     prep(
       `SELECT id, title, due_date, priority, venture_id FROM tasks
-       WHERE status != 'done' AND due_date IS NOT NULL AND due_date < date('now')${and}
-       ORDER BY due_date, priority, id LIMIT 25`
+       WHERE status != 'done' AND due_date IS NOT NULL AND due_date < ?${and}
+       ORDER BY due_date, priority, id LIMIT 25`,
+      today
     ),
     prep(
       `SELECT id, title, due_date, priority, venture_id FROM tasks
-       WHERE status != 'done' AND due_date BETWEEN date('now') AND date('now', '+7 days')${and}
-       ORDER BY due_date, priority, id LIMIT 25`
+       WHERE status != 'done' AND due_date BETWEEN ? AND ?${and}
+       ORDER BY due_date, priority, id LIMIT 25`,
+      today,
+      soonEnd
     ),
     prep(
       `SELECT v.id AS venture_id, v.slug, v.name, COUNT(t.id) AS open_tasks
