@@ -65,7 +65,9 @@ describe('dashboard across all ventures', () => {
     expect(r.body.data).toMatchObject({
       open_tasks: 0,
       overdue: [],
+      overdue_count: 0,
       due_soon: [],
+      due_soon_count: 0,
       client_pipeline: [],
       active_projects: 0,
       active_project_value_cents: 0,
@@ -86,6 +88,8 @@ describe('dashboard across all ventures', () => {
         'open_tasks',
         'open_tasks_by_venture',
         'overdue',
+        'overdue_count',
+        'due_soon_count',
       ].sort()
     );
 
@@ -94,6 +98,7 @@ describe('dashboard across all ventures', () => {
 
     // Overdue: not done, before today, oldest first. F is done so it is left out.
     expect(d.overdue).toEqual([item(ids.A, 'A', -3, 2, 1), item(ids.I, 'I', -2, 3, 2), item(ids.B, 'B', -1, 1, 1)]);
+    expect(d.overdue_count).toBe(3);
 
     // Due soon: today through today + 7, soonest first. E (8 days) and H (done) are left out.
     expect(d.due_soon).toEqual([
@@ -102,6 +107,7 @@ describe('dashboard across all ventures', () => {
       item(ids.K, 'K', 2, 3, 2),
       item(ids.D, 'D', 7, 3, 1),
     ]);
+    expect(d.due_soon_count).toBe(4);
 
     expect(d.open_tasks_by_venture).toEqual([
       { venture_id: 1, slug: 'becs', name: 'BE Consulting Solutions', open_tasks: 6 },
@@ -162,6 +168,8 @@ describe('dashboard across all ventures', () => {
     const d = (await get('/api/dashboard')).body.data;
     expect(d.overdue).toHaveLength(25);
     expect(d.due_soon).toHaveLength(25);
+    expect(d.overdue_count).toBe(30);
+    expect(d.due_soon_count).toBe(30);
     expect(d.open_tasks).toBe(60);
   });
 });
@@ -204,7 +212,9 @@ describe('dashboard for one venture', () => {
     expect(d).toEqual({
       open_tasks: 0,
       overdue: [],
+      overdue_count: 0,
       due_soon: [],
+      due_soon_count: 0,
       open_tasks_by_venture: [{ venture_id: 7, slug: 'tethr', name: 'TETHR', open_tasks: 0 }],
       client_pipeline: [],
       active_projects: 0,
@@ -282,4 +292,123 @@ describe('dashboard with the caller\'s own date (?today=)', () => {
       expect(r.body.fields.today).toBeTruthy();
     }
   );
+});
+
+// The overdue and due-soon lists stop at 25 rows. overdue_count and due_soon_count
+// are the real totals, so the console can show the true number and say when a list is cut short.
+describe('dashboard counts beyond the 25-row lists', () => {
+  /** Puts tasks straight into the database (fast): `n` tasks due `due` days from today. */
+  async function seedDue(n: number, due: number, extra: { venture_id?: number; status?: string; title?: string } = {}) {
+    const stmts = [];
+    for (let i = 0; i < n; i++) {
+      stmts.push(
+        env.DB.prepare('INSERT INTO tasks (venture_id, title, due_date, status) VALUES (?, ?, ?, ?)').bind(
+          extra.venture_id ?? 1,
+          `${extra.title ?? 'task'} ${i}`,
+          day(due),
+          extra.status ?? 'todo'
+        )
+      );
+    }
+    if (stmts.length) await env.DB.batch(stmts);
+  }
+
+  it('counts 0 when nothing is overdue or due soon, ignoring done tasks and tasks with no date', async () => {
+    await seedDue(3, -2, { status: 'done' });
+    await seedDue(2, 3, { status: 'done' });
+    await seedDue(2, 9);
+    await create('tasks', { venture_id: 1, title: 'no date' });
+    const d = (await get('/api/dashboard')).body.data;
+    expect(d.overdue_count).toBe(0);
+    expect(d.due_soon_count).toBe(0);
+    expect(d.overdue).toEqual([]);
+    expect(d.due_soon).toEqual([]);
+  });
+
+  it('counts exactly 25 when there are exactly 25, and the lists hold all of them', async () => {
+    await seedDue(25, -1);
+    await seedDue(25, 2);
+    const d = (await get('/api/dashboard')).body.data;
+    expect(d.overdue).toHaveLength(25);
+    expect(d.overdue_count).toBe(25);
+    expect(d.due_soon).toHaveLength(25);
+    expect(d.due_soon_count).toBe(25);
+  });
+
+  it('counts 26 when there are 26, while the list still shows the 25 oldest', async () => {
+    await seedDue(1, -10, { title: 'oldest' });
+    await seedDue(24, -3);
+    await seedDue(1, -1, { title: 'newest' });
+    const d = (await get('/api/dashboard')).body.data;
+    expect(d.overdue_count).toBe(26);
+    expect(d.overdue).toHaveLength(25);
+    const titles = d.overdue.map((t: { title: string }) => t.title);
+    expect(titles[0]).toBe('oldest 0');
+    expect(titles).not.toContain('newest 0');
+  });
+
+  it('gives the real totals well past 25 (31 overdue, 40 due soon)', async () => {
+    await seedDue(31, -4);
+    await seedDue(20, 0);
+    await seedDue(20, 7);
+    await seedDue(5, 8); // just outside the 7-day window
+    const d = (await get('/api/dashboard')).body.data;
+    expect(d.overdue_count).toBe(31);
+    expect(d.due_soon_count).toBe(40);
+    expect(d.overdue).toHaveLength(25);
+    expect(d.due_soon).toHaveLength(25);
+    expect(d.open_tasks).toBe(31 + 40 + 5);
+  });
+
+  it('counts "doing" tasks as well as "to do" ones', async () => {
+    await seedDue(27, -1, { status: 'doing' });
+    await seedDue(2, -1);
+    expect((await get('/api/dashboard')).body.data.overdue_count).toBe(29);
+  });
+
+  it('limits the counts to one venture with ?venture_id=', async () => {
+    await seedDue(30, -2, { venture_id: 1 });
+    await seedDue(4, -2, { venture_id: 2 });
+    await seedDue(28, 1, { venture_id: 1 });
+    await seedDue(3, 1, { venture_id: 2 });
+
+    const all = (await get('/api/dashboard')).body.data;
+    expect(all.overdue_count).toBe(34);
+    expect(all.due_soon_count).toBe(31);
+
+    const one = (await get('/api/dashboard?venture_id=1')).body.data;
+    expect(one.overdue_count).toBe(30);
+    expect(one.overdue).toHaveLength(25);
+    expect(one.due_soon_count).toBe(28);
+
+    const two = (await get('/api/dashboard?venture_id=2')).body.data;
+    expect(two.overdue_count).toBe(4);
+    expect(two.overdue).toHaveLength(4);
+    expect(two.due_soon_count).toBe(3);
+
+    const empty = (await get('/api/dashboard?venture_id=7')).body.data;
+    expect(empty.overdue_count).toBe(0);
+    expect(empty.due_soon_count).toBe(0);
+  });
+
+  it('follows the caller\'s own date (?today=) for the counts too', async () => {
+    await seedDue(27, 0, { title: 'due utc today' });
+    await seedDue(3, -1, { title: 'due utc yesterday' });
+
+    // Caller is still on yesterday: today's 27 are due soon, yesterday's 3 are due today (also due soon).
+    const behind = (await get(`/api/dashboard?today=${day(-1)}`)).body.data;
+    expect(behind.overdue_count).toBe(0);
+    expect(behind.due_soon_count).toBe(30);
+
+    // Caller is already on tomorrow: all 30 are overdue.
+    const ahead = (await get(`/api/dashboard?today=${day(1)}`)).body.data;
+    expect(ahead.overdue_count).toBe(30);
+    expect(ahead.overdue).toHaveLength(25);
+    expect(ahead.due_soon_count).toBe(0);
+
+    // Works together with ?venture_id=.
+    await seedDue(2, 0, { venture_id: 2 });
+    const v2 = (await get(`/api/dashboard?venture_id=2&today=${day(1)}`)).body.data;
+    expect(v2.overdue_count).toBe(2);
+  });
 });

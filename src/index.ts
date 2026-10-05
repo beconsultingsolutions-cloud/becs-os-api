@@ -245,6 +245,23 @@ function readLimit(url: URL, def: number, max: number): number {
   return Math.min(max, Math.max(1, Math.floor(n)));
 }
 
+// The biggest ?offset= we pass to the database. Far beyond any real table; anything
+// larger just means "past the end" and gives an empty list.
+const MAX_OFFSET = 1_000_000_000;
+
+/**
+ * Turns "?offset=" (how many rows to skip, for reading a long list page by page)
+ * into a whole number, 0 or more. Junk or a missing value gives 0, the way a junk
+ * limit gives the default. A negative one becomes 0; a huge one is clamped.
+ */
+function readOffset(url: URL): number {
+  const raw = url.searchParams.get('offset');
+  if (raw === null || raw.trim() === '') return 0;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(MAX_OFFSET, Math.max(0, Math.floor(n)));
+}
+
 /** Parses the <id> part of the address. Returns null if it is not a positive whole number. */
 function parseId(s: string): number | null {
   return /^[1-9]\d{0,14}$/.test(s) ? Number(s) : null;
@@ -343,9 +360,14 @@ async function listRows(env: Env, table: TableName, url: URL): Promise<Response>
   }
   if (Object.keys(problems).length) return invalid(problems, 'Some filters are not valid.');
 
+  // Paging: ?limit= rows per page (up to 500), ?offset= rows to skip.
+  // Newest first, by id. Ids are unique and never reused, so the order is the same on
+  // every request: page 2 starts exactly where page 1 ended (no row twice, none
+  // skipped), as long as nothing is added or deleted between the two requests.
   const limit = readLimit(url, 100, 500);
-  const sql = `SELECT * FROM ${table}${where.length ? ' WHERE ' + where.join(' AND ') : ''} ORDER BY id DESC LIMIT ?`;
-  const { results } = await env.DB.prepare(sql).bind(...params, limit).all();
+  const offset = readOffset(url);
+  const sql = `SELECT * FROM ${table}${where.length ? ' WHERE ' + where.join(' AND ') : ''} ORDER BY id DESC LIMIT ? OFFSET ?`;
+  const { results } = await env.DB.prepare(sql).bind(...params, limit, offset).all();
   return ok(results);
 }
 
@@ -541,7 +563,9 @@ async function dashboard(env: Env, url: URL): Promise<Response> {
   const bind = ventureId ? [ventureId] : [];
   const prep = (sql: string, ...first: unknown[]) => env.DB.prepare(sql).bind(...first, ...bind);
 
-  const [open, overdue, dueSoon, byVenture, pipeline, projects] = await env.DB.batch([
+  // The overdue and due-soon lists stop at 25 rows. overdue_count and due_soon_count
+  // are the real totals, so the console can say "showing the 25 oldest of 31".
+  const [open, overdue, dueSoon, byVenture, pipeline, projects, overdueCount, dueSoonCount] = await env.DB.batch([
     prep(`SELECT COUNT(*) AS n FROM tasks WHERE status != 'done'${and}`),
     prep(
       `SELECT id, title, due_date, priority, venture_id FROM tasks
@@ -574,13 +598,21 @@ async function dashboard(env: Env, url: URL): Promise<Response> {
       `SELECT COUNT(*) AS n, CAST(TOTAL(value_cents) AS INTEGER) AS cents FROM projects
        WHERE status IN ('planning', 'active')${and}`
     ),
+    // Same conditions as the two lists above, without the 25-row cap.
+    prep(
+      `SELECT COUNT(*) AS n FROM tasks WHERE status != 'done' AND due_date IS NOT NULL AND due_date < ?${and}`,
+      today
+    ),
+    prep(`SELECT COUNT(*) AS n FROM tasks WHERE status != 'done' AND due_date BETWEEN ? AND ?${and}`, today, soonEnd),
   ]);
 
   const proj = projects.results[0] as { n: number; cents: number };
   return ok({
     open_tasks: (open.results[0] as { n: number }).n,
     overdue: overdue.results,
+    overdue_count: (overdueCount.results[0] as { n: number }).n,
     due_soon: dueSoon.results,
+    due_soon_count: (dueSoonCount.results[0] as { n: number }).n,
     open_tasks_by_venture: byVenture.results,
     client_pipeline: pipeline.results,
     active_projects: proj.n,
@@ -628,12 +660,14 @@ async function activity(env: Env, url: URL, p: Principal): Promise<Response> {
     params.push(...visible);
   }
 
+  // Same paging as the table lists: newest first by id, ?limit= and ?offset=.
   const limit = readLimit(url, 50, 200);
+  const offset = readOffset(url);
   const sql =
     'SELECT id, entity_type, entity_id, action, detail, actor, created_at FROM activity_log' +
     (where.length ? ' WHERE ' + where.join(' AND ') : '') +
-    ' ORDER BY id DESC LIMIT ?';
-  const { results } = await env.DB.prepare(sql).bind(...params, limit).all();
+    ' ORDER BY id DESC LIMIT ? OFFSET ?';
+  const { results } = await env.DB.prepare(sql).bind(...params, limit, offset).all();
   return ok(results);
 }
 

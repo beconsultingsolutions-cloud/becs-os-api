@@ -51,9 +51,15 @@ curl $API/health                                        # no key needed
 curl $API/me -H "Authorization: Bearer $KEY"            # who am I
 curl $API/dashboard -H "Authorization: Bearer $KEY"
 curl "$API/dashboard?venture_id=1" -H "Authorization: Bearer $KEY"
+# (its overdue and due_soon lists stop at 25; overdue_count and due_soon_count are the full totals)
 
 # List (filter by any column you can write; newest first; ?limit=1..500)
 curl "$API/tasks?status=todo&venture_id=1" -H "Authorization: Bearer $KEY"
+
+# More than 500 rows: read them in pages with ?offset= (rows to skip).
+# Keep going until a page has fewer than 500 rows.
+curl "$API/tasks?status=done&limit=500&offset=0"   -H "Authorization: Bearer $KEY"
+curl "$API/tasks?status=done&limit=500&offset=500" -H "Authorization: Bearer $KEY"
 
 # Create
 curl -X POST $API/tasks -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \

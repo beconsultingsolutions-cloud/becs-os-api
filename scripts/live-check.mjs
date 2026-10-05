@@ -50,6 +50,17 @@ function check(name, ok, detail = '') {
   if (ok) { passed++; console.log('  ok    ' + name); }
   else { failures.push(name); console.log('  FAIL  ' + name + (detail ? '  -> ' + detail : '')); }
 }
+// Counts every client, 500 at a time, so the check still means something past 500 clients.
+async function countClients() {
+  let n = 0;
+  for (let offset = 0; offset < 50000; offset += 500) {
+    const page = (await api('GET', '/api/clients?limit=500&offset=' + offset)).json?.data;
+    if (!Array.isArray(page)) return null;
+    n += page.length;
+    if (page.length < 500) break;
+  }
+  return n;
+}
 const brief = (r) => r.status + ' ' + JSON.stringify(r.json).slice(0, 200);
 
 const created = { task: null, project: null, client: null };
@@ -97,7 +108,7 @@ async function main() {
   if (!becs) return;
   const before = await api('GET', '/api/dashboard');
   check('dashboard loads', before.status === 200 && typeof before.json?.data?.open_tasks === 'number', brief(before));
-  const clientsBefore = (await api('GET', '/api/clients?limit=500')).json?.data?.length;
+  const clientsBefore = await countClients();
 
   // --- the acceptance test: client -> project -> task -> done ---
   const client = await api('POST', '/api/clients', { venture_id: becs.id, name: TAG + ' Test Client', stage: 'lead' });
@@ -155,7 +166,7 @@ async function cleanup(clientsBefore) {
     check(`delete the test ${table.slice(0, -1)}`, r.status === 200, brief(r));
   }
   if (clientsBefore != null) {
-    const now = (await api('GET', '/api/clients?limit=500')).json?.data?.length;
+    const now = await countClients();
     check('client count is back where it started', now === clientsBefore, `${clientsBefore} -> ${now}`);
   }
   try {

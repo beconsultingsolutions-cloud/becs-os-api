@@ -100,6 +100,8 @@ Rate limiting uses the Workers Rate Limiting binding `APP_LIMITER` keyed by the 
 - Whole numbers may arrive as text (`"2"`). Fractions and true/false are refused.
 - `PATCH` writes and logs only the fields that actually change. A `PATCH` that changes nothing returns the row and logs nothing.
 - List filter values follow the same rules as writes (`?status=bogus` is `400 invalid`). An empty value (`?project_id=`) matches rows where that column is empty. A junk `limit` falls back to the default; an out-of-range one is clamped.
+  A junk `offset` (not a number) falls back to 0; a negative one is 0; a fraction is rounded down. An offset past the end gives `{"data":[]}`, not an error.
+- Paging: lists are ordered by `id`, highest first (ids are never reused, so this is newest first and the same order on every request). Ask for `?limit=500&offset=0`, then `offset=500`, `offset=1000` and so on until a page comes back with fewer rows than the limit. Pages never overlap or skip a row as long as nothing is added or deleted in between; if a row is added between two page requests, the next page can repeat one row, so callers that page should drop duplicate ids.
 - Any non-empty `Authorization` header counts as a key attempt, even if it is not `Bearer`. Tokens longer than 256 characters are refused.
 - API responses carry `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`.
 - A delete is also blocked (`409`) by rows in the reserved `payments` and `portal_links` tables.
@@ -114,12 +116,12 @@ Rate limiting uses the Workers Rate Limiting binding `APP_LIMITER` keyed by the 
 | GET | `/api/health` | Public. `{"ok":true,"service":"becs-os-api"}` |
 | GET | `/api/me` | Who am I. `{"data":{"kind":"master"}}`, `{"data":{"kind":"user","email":"..."}}` or `{"data":{"kind":"app","app":"...","scopes":[...]}}` |
 | GET | `/api/dashboard` | Optional `?venture_id=` and `?today=`. Shape below. |
-| GET | `/api/<table>` | List. Filter by any writable column (`?status=todo&venture_id=1`). `?limit=` 1..500, default 100. Newest first. |
+| GET | `/api/<table>` | List. Filter by any writable column (`?status=todo&venture_id=1`). `?limit=` 1..500, default 100. `?offset=` rows to skip, default 0 (see "Paging"). Newest first. |
 | POST | `/api/<table>` | Create. Body is a JSON object. Returns the row. |
 | GET | `/api/<table>/<id>` | One row or `404`. |
 | PATCH | `/api/<table>/<id>` | Partial update. Returns the row, or `404` if it does not exist. |
 | DELETE | `/api/<table>/<id>` | `{"data":{"id":<id>,"deleted":true}}`, `404` if missing, `409` if still referenced. |
-| GET | `/api/activity` | Audit trail, newest first. `?limit=` 1..200 default 50, `?entity_type=`, `?entity_id=`. App keys see only tables they can read (see "Principals and rights"). |
+| GET | `/api/activity` | Audit trail, newest first. `?limit=` 1..200 default 50, `?offset=` (as for lists), `?entity_type=`, `?entity_id=`. App keys see only tables they can read (see "Principals and rights"). |
 | GET | `/api/admin/keys` | List app keys: app, scopes, created_at. Never keys or hashes. |
 | POST | `/api/admin/keys` | Body `{"app":"leaa-portal","scopes":["tasks:read"]}`. Returns the raw key once. |
 | DELETE | `/api/admin/keys/<app>` | Revokes every key issued to that app. |
@@ -132,7 +134,9 @@ Rate limiting uses the Workers Rate Limiting binding `APP_LIMITER` keyed by the 
 {"data": {
   "open_tasks": 9,
   "overdue": [{"id":1,"title":"...","due_date":"2026-10-01","priority":1,"venture_id":1}],
+  "overdue_count": 31,
   "due_soon": [{"id":2,"title":"...","due_date":"2026-10-06","priority":1,"venture_id":1}],
+  "due_soon_count": 4,
   "open_tasks_by_venture": [{"venture_id":1,"slug":"becs","name":"BE Consulting Solutions","open_tasks":7}],
   "client_pipeline": [{"stage":"lead","n":8}],
   "active_projects": 0,
@@ -142,7 +146,10 @@ Rate limiting uses the Workers Rate Limiting binding `APP_LIMITER` keyed by the 
 
 - "Today" is the UTC date unless the caller sends `?today=YYYY-MM-DD` with the date where they are. It must be a real date within one day of the UTC date, else `400 invalid`. The console always sends it, so its figures follow the owner's local day.
 - `overdue`: not done, `due_date` before today, oldest first, max 25.
+- `overdue_count`: how many tasks match `overdue` in total, with no 25 cap. When it is more than 25, `overdue` holds only the 25 oldest.
 - `due_soon`: not done, `due_date` from today through today + 7 days, soonest first, max 25.
+- `due_soon_count`: how many tasks match `due_soon` in total, with no 25 cap.
+- Both counts follow `?today=` and `?venture_id=` exactly like the lists.
 - `active_projects` / `active_project_value_cents`: projects whose status is `planning` or `active`.
   The value is added up with SQLite `TOTAL()` and cast back to whole cents, so no stored data can make it fail.
 - With `?venture_id=`, every figure is limited to that venture (`open_tasks_by_venture` then has one row).
@@ -213,3 +220,9 @@ Every create, update and delete writes one row: `entity_type`, `entity_id`, `act
 - A venture switcher (All ventures, or one) filters every screen.
 - Create, edit and delete on clients, projects and tasks.
 - The Plan / Evolve / Succeed strip shows only on projects that have a `phase`; the phase field is offered only when the project's venture slug is `becs`.
+- Overview figures: the Overdue and Due in 7 days tiles and headings use `overdue_count` and `due_soon_count`.
+  When a list holds fewer rows than its count, it says so ("Showing the 25 oldest of 31") with a button to the Tasks screen, which lists them all.
+- Lists are read in full: the console asks for 500 rows at a time with `?offset=` until a page comes back short (dropping any repeated id),
+  up to 5,000 rows per list. If a list has more than that, the screen shows a notice saying only the newest 5,000 are shown, instead of hiding the rest silently.
+- Form dialogs: the action row (Delete, Cancel, Save) stays pinned to the bottom of the dialog while the fields scroll, so Save is always reachable,
+  also on phones with the on-screen keyboard open.

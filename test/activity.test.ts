@@ -168,6 +168,43 @@ describe('GET /api/activity', () => {
     expect((await get('/api/activity?limit=lots')).body.data).toHaveLength(50);
   });
 
+  it('reads the whole log page by page with ?offset=, with no entry twice and none missed', async () => {
+    await seedLog(450);
+    const ids = (r: { body: { data: LogRow[] } }) => r.body.data.map((x) => x.id);
+    const p1 = ids(await get('/api/activity?limit=200&offset=0'));
+    const p2 = ids(await get('/api/activity?limit=200&offset=200'));
+    const p3 = ids(await get('/api/activity?limit=200&offset=400'));
+    expect([p1.length, p2.length, p3.length]).toEqual([200, 200, 50]);
+    const joined = [...p1, ...p2, ...p3];
+    expect(joined).toEqual((await allLog()).map((x) => x.id).reverse());
+  });
+
+  it('treats a junk ?offset= as 0 and an offset past the end as an empty list', async () => {
+    await seedLog(10);
+    const first = (await get('/api/activity?limit=3')).body.data;
+    for (const junk of ['abc', '-4', '', 'Infinity']) {
+      expect((await get(`/api/activity?limit=3&offset=${junk}`)).body.data, junk).toEqual(first);
+    }
+    const past = await get('/api/activity?offset=10');
+    expect(past.status).toBe(200);
+    expect(past.body.data).toEqual([]);
+  });
+
+  it('combines ?offset= with ?entity_type= and ?entity_id=', async () => {
+    await seedLog(5); // tasks 1..5
+    await env.DB.batch(
+      [1, 2, 3, 4].map((n) =>
+        env.DB.prepare("INSERT INTO activity_log (entity_type, entity_id, action, actor) VALUES ('clients', 9, ?, 'master')").bind(
+          n % 2 ? 'updated' : 'created'
+        )
+      )
+    );
+    const all = (await get('/api/activity?entity_type=clients&entity_id=9')).body.data as LogRow[];
+    expect(all).toHaveLength(4);
+    const page = (await get('/api/activity?entity_type=clients&entity_id=9&limit=2&offset=2')).body.data as LogRow[];
+    expect(page.map((x) => x.id)).toEqual(all.slice(2).map((x) => x.id));
+  });
+
   it('shows old entries with no actor as null', async () => {
     await env.DB.prepare("INSERT INTO activity_log (entity_type, entity_id, action) VALUES ('tasks', 1, 'created')").run();
     expect((await get('/api/activity')).body.data[0].actor).toBeNull();

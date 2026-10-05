@@ -165,6 +165,18 @@ for (const table of TABLE_NAMES) {
       expect((await get(`/api/${table}?limit=2`)).body.data).toHaveLength(2);
     });
 
+    it('reads the whole list page by page with ?offset=, with no row twice and none missed', async () => {
+      for (let i = 1; i <= 5; i++) await create(table, minimal(table, i));
+      const all = (await get(`/api/${table}?limit=500`)).body.data.map((x: { id: number }) => x.id);
+      const paged: number[] = [];
+      for (let offset = 0; offset < all.length + 2; offset += 2) {
+        const r = await get(`/api/${table}?limit=2&offset=${offset}`);
+        expect(r.status).toBe(200);
+        paged.push(...r.body.data.map((x: { id: number }) => x.id));
+      }
+      expect(paged).toEqual(all);
+    });
+
     it('refuses a filter value that breaks the column rule', async () => {
       const col = table === 'ventures' ? 'status' : table === 'clients' ? 'stage' : 'status';
       const r = await get(`/api/${table}?${col}=nonsense`);
@@ -209,6 +221,121 @@ describe('list limits (tasks)', () => {
       expect((await get(`/api/tasks?limit=${raw}`)).body.data).toHaveLength(expected);
     });
   }
+});
+
+// Lists stop at 500 rows per request. ?offset= skips rows, so a caller (like the
+// console) can read a longer list in pages of 500.
+describe('paging through long lists with ?offset= (tasks)', () => {
+  /** Puts n tasks straight into the database (fast). Every third one is done; venture 1 or 2 alternately. */
+  async function seedTasks(n: number) {
+    const stmts = [];
+    for (let i = 0; i < n; i++) {
+      stmts.push(
+        env.DB.prepare('INSERT INTO tasks (venture_id, title, status) VALUES (?, ?, ?)').bind(
+          (i % 2) + 1,
+          `Seeded ${i}`,
+          i % 3 === 0 ? 'done' : 'todo'
+        )
+      );
+    }
+    await env.DB.batch(stmts);
+  }
+  const idsOf = (r: { body: { data: { id: number }[] } }) => r.body.data.map((x) => x.id);
+  const allIds = async (where = '') =>
+    (await env.DB.prepare(`SELECT id FROM tasks ${where} ORDER BY id DESC`).all<{ id: number }>()).results.map(
+      (x) => x.id
+    );
+
+  it('reads 1,234 tasks in pages of 500 with no overlap and no gaps, newest first', async () => {
+    await seedTasks(1234);
+    const p1 = idsOf(await get('/api/tasks?limit=500&offset=0'));
+    const p2 = idsOf(await get('/api/tasks?limit=500&offset=500'));
+    const p3 = idsOf(await get('/api/tasks?limit=500&offset=1000'));
+    expect([p1.length, p2.length, p3.length]).toEqual([500, 500, 234]);
+    // Each page carries on exactly where the one before stopped.
+    expect(Math.min(...p1)).toBeGreaterThan(Math.max(...p2));
+    expect(Math.min(...p2)).toBeGreaterThan(Math.max(...p3));
+    const joined = [...p1, ...p2, ...p3];
+    expect(new Set(joined).size).toBe(1234);
+    expect(joined).toEqual(await allIds());
+  });
+
+  it('gives the same page every time it is asked for', async () => {
+    await seedTasks(700);
+    const a = idsOf(await get('/api/tasks?limit=500&offset=500'));
+    const b = idsOf(await get('/api/tasks?limit=500&offset=500'));
+    expect(a).toHaveLength(200);
+    expect(a).toEqual(b);
+  });
+
+  it('starts at the first row when there is no offset, or it is 0', async () => {
+    await seedTasks(30);
+    const plain = idsOf(await get('/api/tasks?limit=10'));
+    expect(idsOf(await get('/api/tasks?limit=10&offset=0'))).toEqual(plain);
+    expect(plain).toEqual((await allIds()).slice(0, 10));
+  });
+
+  it('uses the default page size of 100 when only ?offset= is sent', async () => {
+    await seedTasks(250);
+    const r = await get('/api/tasks?offset=100');
+    expect(idsOf(r)).toEqual((await allIds()).slice(100, 200));
+  });
+
+  it('answers an empty list (not an error) for an offset past the end', async () => {
+    await seedTasks(12);
+    for (const offset of ['12', '13', '5000', '99999999999999999999']) {
+      const r = await get(`/api/tasks?offset=${offset}`);
+      expect(r.status, offset).toBe(200);
+      expect(r.body.data, offset).toEqual([]);
+    }
+  });
+
+  const junk: [string, number][] = [
+    ['abc', 0],
+    ['', 0],
+    ['-5', 0],
+    ['Infinity', 0],
+    ['NaN', 0],
+    ['2.9', 2],
+    ['%207%20', 7],
+  ];
+  for (const [raw, expected] of junk) {
+    it(`treats ?offset=${raw} as ${expected}`, async () => {
+      await seedTasks(20);
+      const r = await get(`/api/tasks?limit=5&offset=${raw}`);
+      expect(r.status).toBe(200);
+      expect(idsOf(r)).toEqual((await allIds()).slice(expected, expected + 5));
+    });
+  }
+
+  it('combines ?offset= with filters: pages of done tasks in one venture', async () => {
+    await seedTasks(1300);
+    const want = await allIds("WHERE status = 'done' AND venture_id = 2");
+    expect(want.length).toBeGreaterThan(200);
+    const got: number[] = [];
+    // At most 20 pages, so a broken offset fails the test instead of looping forever.
+    for (let offset = 0; offset < 2000; offset += 100) {
+      const page = idsOf(await get(`/api/tasks?status=done&venture_id=2&limit=100&offset=${offset}`));
+      got.push(...page);
+      if (page.length < 100) break;
+    }
+    expect(got).toEqual(want);
+  });
+
+  it('still refuses a bad filter when an offset is sent', async () => {
+    const r = await get('/api/tasks?status=bogus&offset=10');
+    expectErrorShape(r, 400, 'invalid');
+    expect(r.body.fields).toHaveProperty('status');
+  });
+
+  it('does not treat offset as a column filter on any table', async () => {
+    for (const table of TABLE_NAMES) {
+      const r = await get(`/api/${table}?offset=0`);
+      expect(r.status, table).toBe(200);
+    }
+    // The seven seeded ventures, skipping the newest five.
+    expect((await get('/api/ventures?offset=5')).body.data).toHaveLength(2);
+  });
 });
 
 describe('list filters', () => {

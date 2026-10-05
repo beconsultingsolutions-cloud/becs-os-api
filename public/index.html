@@ -205,6 +205,8 @@ input[aria-invalid="true"],select[aria-invalid="true"],textarea[aria-invalid="tr
 .rows>li:last-child{border-bottom:0}
 .grow{flex:1;min-width:0}
 .meta{font-family:var(--mono);font-size:.75rem;color:var(--ink-soft);overflow-wrap:anywhere}
+/* "Showing the 25 oldest of 31" under a dashboard list that was cut short */
+.more{display:flex;justify-content:space-between;align-items:center;gap:10px 12px;flex-wrap:wrap;padding:10px 16px;border-top:2px solid var(--navy);background:var(--cream-2);font-size:.875rem;font-weight:500;border-radius:0 0 8px 8px}
 
 /* ---------- pills ---------- */
 .pill{display:inline-flex;align-items:center;font-family:var(--mono);font-size:.7rem;letter-spacing:.06em;text-transform:uppercase;padding:2px 9px;border-radius:99px;border:1.5px solid var(--slate);color:var(--ink-soft);background:transparent;white-space:nowrap;line-height:1.5}
@@ -266,7 +268,7 @@ input[aria-invalid="true"],select[aria-invalid="true"],textarea[aria-invalid="tr
 /* ---------- Tasks list ---------- */
 .quickadd{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px;padding:12px;border:2px solid var(--navy);border-radius:var(--radius);background:var(--card)}
 .quickadd input{flex:1 1 16rem;min-width:0}
-.quickadd select{width:auto;flex:0 1 12rem;min-width:0}
+.quickadd select{width:auto;flex:0 0 auto;max-width:100%}   /* as wide as its longest venture name */
 .tgroup{margin-bottom:22px}
 .tgroup>h2{font-family:var(--mono);font-size:.78rem;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-soft);margin:0 0 8px 2px}
 .tgroup.overdue>h2{color:var(--danger)}
@@ -315,9 +317,12 @@ input[aria-invalid="true"],select[aria-invalid="true"],textarea[aria-invalid="tr
 .warn{border:2px solid var(--danger);background:var(--danger-tint);border-radius:8px;padding:10px 12px;color:var(--danger);font-weight:700;font-size:.9rem}
 
 /* ---------- 1e. Dialogs ---------- */
-dialog{margin:auto;border:2px solid var(--navy);border-radius:var(--radius);padding:0;background:var(--cream);color:var(--ink);width:min(560px,calc(100vw - 24px));max-height:calc(100vh - 24px);box-shadow:8px 8px 0 var(--navy)}
+/* The dialog itself scrolls; its action row (.dfoot) is pinned to the bottom of
+   it, so Save is always on screen however long the form is. scroll-padding keeps
+   a focused field from hiding behind that pinned row. */
+dialog{margin:auto;border:2px solid var(--navy);border-radius:var(--radius);padding:0;background:var(--cream);color:var(--ink);width:min(560px,calc(100vw - 24px));max-height:calc(100vh - 24px);box-shadow:8px 8px 0 var(--navy);overflow-y:auto;overscroll-behavior:contain;scroll-padding-bottom:96px}
 dialog::backdrop{background:rgba(45,42,95,.55)}
-.dform{padding:22px;display:flex;flex-direction:column;gap:14px}
+.dform{padding:22px 22px 8px;display:flex;flex-direction:column;gap:14px}
 .dhead{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
 .dhead .h2{font-size:2rem;color:var(--purple)}
 .fgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
@@ -332,7 +337,7 @@ dialog::backdrop{background:rgba(45,42,95,.55)}
 .field .ferr:empty{display:none}
 .derr{color:var(--danger);font-weight:700;font-size:.9rem}
 .derr:empty{display:none}
-.dfoot{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;border-top:2px solid var(--navy);padding-top:14px}
+.dfoot{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;border-top:2px solid var(--navy);padding:14px 0 max(14px,env(safe-area-inset-bottom));position:sticky;bottom:0;z-index:1;background:var(--cream)}
 .dfoot .right{display:flex;gap:10px;margin-left:auto;flex-wrap:wrap}
 .stamp{font-family:var(--mono);font-size:.72rem;color:var(--ink-soft)}
 
@@ -363,6 +368,20 @@ dialog::backdrop{background:rgba(45,42,95,.55)}
   main{padding:20px 16px 110px}
   .deep{padding:22px 18px}
   #toast{bottom:90px}
+  /* Dialogs sit in the middle of the part of the screen you can actually see
+     (--vv-top / --vv-h are set from window.visualViewport in section 10), so
+     when the on-screen keyboard opens the dialog shrinks above it and its
+     pinned Save row stays visible. Falls back to the full screen height. */
+  dialog{margin:0 auto;top:calc(var(--vv-top,0px) + var(--vv-h,100dvh) / 2);bottom:auto;transform:translateY(-50%);
+    max-height:calc(var(--vv-h,100dvh) - 20px - env(safe-area-inset-top) - env(safe-area-inset-bottom))}
+  .dform{padding:18px 16px 4px}
+  /* Delete, Cancel and Save on one row, so the pinned row stays short. */
+  .dfoot,.dfoot .right{flex-wrap:nowrap}
+  .dfoot .btn{padding-left:12px;padding-right:12px}
+  /* Quick add: the title gets its own row next to Add, the venture picker a full row below, so long names fit. */
+  .quickadd input{flex:1 1 0}
+  .quickadd .btn{order:2}
+  .quickadd select{order:3;flex:1 1 100%}
 }
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important}}
 </style>
@@ -455,7 +474,8 @@ const API_BASE = '/api';                       // the Worker answers everything 
 const STORE_KEY = 'becs.key';                  // sessionStorage: key typed into the key box (this tab only)
 const STORE_VENTURE = 'becs.venture';          // localStorage: venture switcher choice ('' = all)
 const STORE_LAST_VENTURE = 'becs.lastVenture'; // localStorage: last venture used in a form
-const LIST_LIMIT = 500;                        // the API's maximum page size
+const LIST_PAGE = 500;                         // the API's maximum page size: lists are read 500 rows at a time
+const LIST_CEILING = 5000;                     // most rows the console loads for one list (a notice says so if there are more)
 
 const STAGES = [['lead', 'Lead'], ['contacted', 'Contacted'], ['proposal', 'Proposal'], ['active', 'Active'], ['paused', 'Paused'], ['closed', 'Closed']];
 const PROJECT_STATUSES = [['planning', 'Planning'], ['active', 'Active'], ['paused', 'Paused'], ['done', 'Done'], ['cancelled', 'Cancelled']];
@@ -639,6 +659,31 @@ async function maybe(path, params, scope) {
   try { return await api('GET', path + qs(params)); } catch (e) { if (e.status === 401) throw e; return null; }
 }
 
+/* Read a WHOLE list, not just its first 500 rows. The API sends at most
+   500 rows per request, so ask again with ?offset=500, 1000, ... until a page
+   comes back short. Stops at LIST_CEILING rows. Returns the rows as an array;
+   if the list is longer than the ceiling, the array gets .partial = true so
+   the screen can say so (see partialNotice). A row seen twice (one was added
+   while paging) is kept once. */
+async function fetchAll(path, params) {
+  const rows = [], seen = new Set();
+  for (let offset = 0; offset < LIST_CEILING; offset += LIST_PAGE) {
+    const page = (await api('GET', path + qs({ ...params, limit: LIST_PAGE, offset }))) || [];
+    for (const r of page) if (!seen.has(r.id)) { seen.add(r.id); rows.push(r); }
+    if (page.length < LIST_PAGE) return rows;
+  }
+  /* Exactly at the ceiling: one tiny request tells us whether anything is left. */
+  const more = (await api('GET', path + qs({ ...params, limit: 1, offset: LIST_CEILING }))) || [];
+  if (more.length) rows.partial = true;
+  return rows;
+}
+/* Same as need() / maybe(), but reading the whole list. */
+const needAll = (path, params) => fetchAll(path, params);
+async function maybeAll(path, params, scope) {
+  if (scope && !can(scope)) return null;
+  try { return await fetchAll(path, params); } catch (e) { if (e.status === 401) throw e; return null; }
+}
+
 /* =====================================================================
    4  SIGN-IN. GET /api/me with the browser's cookies (Cloudflare Access).
    200 = in. 401 = show the key box; the key lives in sessionStorage only.
@@ -753,7 +798,7 @@ let VENTURES = [];   // [{id, slug, name, status, ...}]
 async function loadVentures() {
   VENTURES = [];
   if (can('ventures:read')) {
-    try { VENTURES = (await api('GET', '/ventures' + qs({ limit: LIST_LIMIT }))) || []; } catch (e) { if (e.status === 401) throw e; }
+    try { VENTURES = await fetchAll('/ventures'); } catch (e) { if (e.status === 401) throw e; }
   }
   VENTURES.sort((a, b) => (a.status === 'archived') - (b.status === 'archived') || byName(a, b));
   const saved = storeGet('local', STORE_VENTURE) || '';
@@ -838,6 +883,17 @@ function errorNotice(e, what, scope) {
   }
   return notice(`Couldn\u2019t load ${what}`, e.message + (e.status ? ` (error ${e.status})` : ''), { retry: () => route() });
 }
+/* Shown at the top of a screen when a list was longer than the console loads
+   (LIST_CEILING rows), so nothing goes missing silently.
+   lists: [['tasks', rows], ['projects', rows]]; rows may be null. */
+function partialNotice(lists) {
+  const cut = lists.filter(([, rows]) => rows && rows.partial).map(([name]) => name);
+  if (!cut.length) return null;
+  const n = LIST_CEILING.toLocaleString('en-US');
+  return notice(`Showing the newest ${n} ${cut.join(' and ')} only`,
+    `There are more than ${n}, so older ones are not loaded on this screen and counts here may be low. Pick one venture at the top of the page to see fewer at a time.`,
+    { err: false });
+}
 
 /* Run one write (POST/PATCH/DELETE), then refetch the current screen.
    The control that started it is disabled while the request is in flight. */
@@ -863,7 +919,7 @@ const RELATED = new Map();
 async function related(table, ventureId) {
   if (!ventureId || !can(table + ':read')) return null;
   const k = table + ':' + ventureId;
-  if (!RELATED.has(k)) RELATED.set(k, api('GET', `/${table}` + qs({ venture_id: ventureId, limit: LIST_LIMIT })).then(r => (r || []).sort(byName)).catch(e => { RELATED.delete(k); return null; }));
+  if (!RELATED.has(k)) RELATED.set(k, fetchAll(`/${table}`, { venture_id: ventureId }).then(r => r.sort(byName)).catch(e => { RELATED.delete(k); return null; }));
   return RELATED.get(k);
 }
 
@@ -1171,12 +1227,14 @@ const overview = {
         ? notice('This key can\u2019t show the dashboard', `The dashboard needs these scopes: ${dash.__missing.join(', ')}.`, { err: false })
         : errorNotice(dash.__error, 'the dashboard', 'tasks:read, clients:read, projects:read and ventures:read'));
     } else {
+      /* The two lists hold at most 25 tasks each; the *_count fields are the real totals. */
       const late = d.overdue || [], soon = d.due_soon || [];
+      const lateN = d.overdue_count ?? late.length, soonN = d.due_soon_count ?? soon.length;
       const stat = (label, n, sub, alert) => h('div', { class: 'stat' + (alert ? ' alert' : '') }, h('span', { class: 'l' }, label), h('span', { class: 'n' }, String(n)), sub ? h('span', { class: 's' }, sub) : null);
       parts.push(h('div', { class: 'stats' + (overview.animated ? '' : ' anim'), role: 'group', 'aria-label': 'Key figures' },
         stat('Open tasks', d.open_tasks ?? 0),
-        stat('Overdue', late.length >= 25 ? '25+' : late.length, null, late.length > 0),
-        stat('Due in 7 days', soon.length >= 25 ? '25+' : soon.length),
+        stat('Overdue', lateN, null, lateN > 0),
+        stat('Due in 7 days', soonN),
         stat('Active projects', d.active_projects ?? 0, 'planning + active'),
         stat('Active value', moneyShort(d.active_project_value_cents), money(d.active_project_value_cents || 0))));
 
@@ -1186,8 +1244,14 @@ const overview = {
           h('button', { class: 'linkbtn', type: 'button', 'data-fk': 'dt-' + t.id, onclick: e => editById('tasks', t.id, e.currentTarget) }, t.title),
           h('div', { class: 'tmeta' }, ventTag(t.venture_id), h('span', { class: dayDiff(t.due_date) < 0 ? 'late' : null }, dueText(t.due_date)))),
         h('span', { class: 'pill p' + (t.priority || 3) }, prioLabel(t.priority)));
-      const list = (items, emptyTitle, emptyText) => h('div', { class: 'panel' }, items.length
-        ? h('ul', { class: 'rows' }, items.map(dashRow))
+      /* When the list was cut short, say so under it and offer the Tasks screen, which shows them all. */
+      const seeAll = () => { Object.assign(tasksScreen, { status: 'open', tag: '', priority: '', project: '', q: '' }); };
+      const more = (shown, total, which) => total > shown
+        ? h('div', { class: 'more' }, h('span', {}, `Showing the ${shown} ${which} of ${total}.`),
+            h('a', { class: 'btn sm', href: '#/tasks', onclick: seeAll }, 'See all in Tasks', icon('next')))
+        : null;
+      const list = (items, total, which, emptyTitle, emptyText) => h('div', { class: 'panel' }, items.length
+        ? [h('ul', { class: 'rows' }, items.map(dashRow)), more(items.length, total, which)]
         : h('div', { class: 'empty' }, h('b', {}, emptyTitle), emptyText));
 
       const stages = STAGES.map(([k, l]) => [k, l, ((d.client_pipeline || []).find(s => s.stage === k) || {}).n || 0]);
@@ -1198,10 +1262,10 @@ const overview = {
 
       parts.push(h('div', { class: 'grid2' },
         h('div', {},
-          h('section', { class: 'block' }, h('h2', { class: 'h2' }, 'Overdue', h('span', { class: 'mono' }, String(late.length))),
-            list(late, 'Nothing overdue.', ' Good place to be.')),
-          h('section', { class: 'block' }, h('h2', { class: 'h2' }, 'Due in the next 7 days', h('span', { class: 'mono' }, String(soon.length))),
-            list(soon, 'Nothing due this week.', ' Add due dates to tasks to see them here.'))),
+          h('section', { class: 'block' }, h('h2', { class: 'h2' }, 'Overdue', h('span', { class: 'mono' }, String(lateN))),
+            list(late, lateN, 'oldest', 'Nothing overdue.', ' Good place to be.')),
+          h('section', { class: 'block' }, h('h2', { class: 'h2' }, 'Due in the next 7 days', h('span', { class: 'mono' }, String(soonN))),
+            list(soon, soonN, 'soonest', 'Nothing due this week.', ' Add due dates to tasks to see them here.'))),
         h('div', {},
           h('section', { class: 'block' }, h('h2', { class: 'h2' }, 'Client pipeline'),
             h('div', { class: 'panel' }, h('ul', { class: 'bars' }, stages.map(([k, l, n]) => h('li', {},
@@ -1286,8 +1350,8 @@ const clientsScreen = {
   title: 'Clients', stage: '', q: '',
   async load() {
     const v = ventureParam();
-    const [clients, projects] = await Promise.all([need('/clients', { ...v, limit: LIST_LIMIT }), maybe('/projects', { ...v, limit: LIST_LIMIT }, 'projects:read')]);
-    return { clients: clients || [], projects };
+    const [clients, projects] = await Promise.all([needAll('/clients', v), maybeAll('/projects', v, 'projects:read')]);
+    return { clients, projects };
   },
   draw(data) {
     const me = clientsScreen, writable = can('clients:write');
@@ -1330,6 +1394,7 @@ const clientsScreen = {
     return [
       shead('BECS OS \u00b7 Clients \u00b7 ' + scopeLabel(), 'Clients', 'Everyone you are working with, or about to. Move them along the pipeline right from the list.',
         writable ? h('button', { class: 'btn primary', type: 'button', onclick: () => clientForm(null, {}) }, icon('plus'), 'Add client') : null),
+      partialNotice([['clients', data.clients], ['projects', data.projects]]),
       h('div', { class: 'filters' }, h('div', { class: 'f wide' }, h('span', {}, 'Stage'), seg), h('div', { class: 'f' }, h('label', { for: 'client-search' }, 'Search clients'), search)),
       h('div', { class: 'panel' }, rows.length
         ? h('table', { class: 'tbl' }, h('thead', {}, h('tr', {}, ['Client', 'Stage', 'Contact', 'Projects', ''].map(x => h('th', { scope: 'col' }, x ? x : h('span', { class: 'sr' }, 'Actions'))))), h('tbody', {}, rows.map(tr)))
@@ -1343,11 +1408,12 @@ const projectsScreen = {
   title: 'Projects', status: 'current',
   async load() {
     const v = ventureParam();
+    /* All tasks are read too: the progress bars count done tasks per project. */
     const [projects, clients, tasks] = await Promise.all([
-      need('/projects', { ...v, limit: LIST_LIMIT }),
-      maybe('/clients', { ...v, limit: LIST_LIMIT }, 'clients:read'),
-      maybe('/tasks', { ...v, limit: LIST_LIMIT }, 'tasks:read')]);
-    return { projects: projects || [], clients, tasks };
+      needAll('/projects', v),
+      maybeAll('/clients', v, 'clients:read'),
+      maybeAll('/tasks', v, 'tasks:read')]);
+    return { projects, clients, tasks };
   },
   draw(data) {
     const me = projectsScreen, writable = can('projects:write');
@@ -1391,6 +1457,7 @@ const projectsScreen = {
     return [
       shead('BECS OS \u00b7 Projects \u00b7 ' + scopeLabel(), 'Projects', 'Every engagement, its value and how far along it is. BECS projects move through Plan, Evolve and Succeed.',
         writable ? h('button', { class: 'btn primary', type: 'button', onclick: () => projectForm(null, {}) }, icon('plus'), 'Add project') : null),
+      partialNotice([['projects', data.projects], ['clients', data.clients], ['tasks', data.tasks]]),
       h('div', { class: 'filters' }, h('div', { class: 'f wide' }, h('span', {}, 'Status'),
         h('div', { class: 'seg', role: 'group', 'aria-label': 'Filter by status' }, filters.map(([k, l]) =>
           h('button', { type: 'button', 'aria-pressed': String(me.status === k), 'data-fk': 'pf-' + k, onclick: () => { me.status = k; redraw(); } }, l, h('span', { class: 'c' }, String(count(k)))))))),
@@ -1407,9 +1474,12 @@ const tasksScreen = {
     const me = tasksScreen, v = ventureParam();
     const statuses = me.status === 'open' ? ['todo', 'doing'] : me.status === 'all' ? [null] : [me.status];
     const [lists, projects] = await Promise.all([
-      Promise.all(statuses.map(s => need('/tasks', { ...v, status: s, limit: LIST_LIMIT }))),
-      maybe('/projects', { ...v, limit: LIST_LIMIT }, 'projects:read')]);
-    return { tasks: lists.flat().filter(Boolean), projects };
+      Promise.all(statuses.map(s => needAll('/tasks', { ...v, status: s }))),
+      maybeAll('/projects', v, 'projects:read')]);
+    /* "Open" is two lists (to do + doing); remember if either was cut at the ceiling. */
+    const tasks = lists.flat();
+    if (lists.some(l => l.partial)) tasks.partial = true;
+    return { tasks, projects };
   },
   draw(data) {
     const me = tasksScreen, writable = can('tasks:write'), t0 = today();
@@ -1506,6 +1576,7 @@ const tasksScreen = {
     return [
       shead('BECS OS \u00b7 Tasks \u00b7 ' + scopeLabel(), 'Tasks', 'Overdue first, then by due date and priority. Tick the box when it is done.',
         writable ? h('button', { class: 'btn primary', type: 'button', onclick: () => taskForm(null, { project_id: me.project && me.project !== '_none' ? Number(me.project) : undefined, venture_id: (data.projects || []).find(p => String(p.id) === me.project)?.venture_id }) }, icon('plus'), 'Add task') : null),
+      partialNotice([['tasks', data.tasks], ['projects', data.projects]]),
       writable ? quick : null,
       h('div', { class: 'filters' },
         h('div', { class: 'f wide' }, h('span', {}, 'Status'), statusSeg),
@@ -1684,6 +1755,25 @@ function paint(screen, data, keepFocus) {
   }
 }
 window.addEventListener('hashchange', route);
+/* Phones: tell the CSS how much of the screen is visible (it shrinks when the
+   on-screen keyboard opens), so open dialogs fit above the keyboard. See 1f. */
+(function trackVisibleArea() {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  const set = () => {
+    const s = document.documentElement.style;
+    s.setProperty('--vv-h', vv.height + 'px');
+    s.setProperty('--vv-top', vv.offsetTop + 'px');
+    /* The dialog just got shorter or taller: keep the field being typed in on screen. */
+    const f = document.activeElement;
+    if (f && f.closest && f.closest('dialog[open]') && f.matches('input,select,textarea')) {
+      requestAnimationFrame(() => f.scrollIntoView({ block: 'nearest' }));
+    }
+  };
+  vv.addEventListener('resize', set);
+  vv.addEventListener('scroll', set);
+  set();
+})();
 /* Clicking the tab you are already on reloads it (no hashchange fires), so
    changes made by apps and assistants show up without reloading the page. */
 document.addEventListener('click', ev => {
