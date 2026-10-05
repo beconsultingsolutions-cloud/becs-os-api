@@ -3,18 +3,58 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-09-01",
   "observability": { "enabled": true },
-  "assets": { "directory": "./public" },
+
+  // The console (public/index.html) is served as static files.
+  // Requests under /api always go to the Worker, even if a file with that name existed.
+  // Any other path with no matching file also falls through to the Worker, which answers 404 {"error":"not_found"}.
+  "assets": {
+    "directory": "./public",
+    "run_worker_first": ["/api", "/api/*"]
+  },
+
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "becs-os-core",
-      "database_id": "fab9e141-867f-46bd-bfaf-75d9c3b0191b"
+      "database_id": "fab9e141-867f-46bd-bfaf-75d9c3b0191b",
+      // Schema changes live here as numbered .sql files (see README "Database migrations").
+      "migrations_dir": "migrations"
     }
   ],
+
   "kv_namespaces": [
     {
+      // Holds the hashed app keys ("key:<sha256>").
       "binding": "CONFIG",
       "id": "2d7e6ec8dcdf42168a74609d1d8e0edf"
     }
-  ]
+  ],
+
+  // Rate limit for app keys: 60 requests per 60 seconds per key (keyed by the key's hash).
+  // namespace_id is any positive whole number, unique within the Cloudflare account.
+  // period must be 10 or 60. Needs wrangler 4.36.0 or later.
+  "ratelimits": [
+    {
+      "name": "APP_LIMITER",
+      "namespace_id": "4801",
+      "simple": { "limit": 60, "period": 60 }
+    }
+  ],
+
+  // No versioned preview addresses (<version>-becs-os-api.<subdomain>.workers.dev): they would sit outside the Access application.
+  "preview_urls": false,
+
+  // Cloudflare Access sign-in for the console. It is switched off unless ALL THREE are filled in
+  // (see README "Turning on Cloudflare Access"):
+  //   ACCESS_TEAM_DOMAIN     your Zero Trust team domain, e.g. "myteam.cloudflareaccess.com"
+  //                          (anything not ending in .cloudflareaccess.com is refused)
+  //   ACCESS_AUD             the "Application Audience (AUD) Tag" of the Access application
+  //   ACCESS_ALLOWED_EMAILS  the email(s) allowed to sign in, comma-separated, e.g. "me@example.com"
+  //                          (letter case and spaces do not matter). Anyone else Access lets through is refused.
+  // None is a secret: all are visible in the Zero Trust dashboard or in the tokens themselves.
+  "vars": {
+    "ACCESS_TEAM_DOMAIN": "",
+    "ACCESS_AUD": "",
+    "ACCESS_ALLOWED_EMAILS": ""
+  }
 }

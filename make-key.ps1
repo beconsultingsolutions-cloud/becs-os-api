@@ -12,7 +12,7 @@ try {
     $master = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
     if (-not $master) { throw 'No key entered.' }
     $body = @{ app = $app; scopes = $scopes } | ConvertTo-Json -Compress
-    $res = Invoke-RestMethod -Method Post -Uri "$base/admin/keys" `
+    $res = Invoke-RestMethod -Method Post -Uri "$base/api/admin/keys" `
         -Headers @{ Authorization = "Bearer $master" } -ContentType 'application/json' -Body $body
     Set-Clipboard -Value $res.data.key
     Write-Host ''
