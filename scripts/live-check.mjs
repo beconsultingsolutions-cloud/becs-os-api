@@ -14,7 +14,7 @@
 //
 // Everything it creates is named "[live-check] ..." so a leftover is easy to spot.
 
-import { execFileSync } from 'node:child_process';
+import { execSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -29,7 +29,8 @@ const key = randomBytes(32).toString('hex');
 const kvName = 'key:' + createHash('sha256').update(key).digest('hex');
 
 function wrangler(args) {
-  return execFileSync('npx', ['wrangler', ...args], { encoding: 'utf8', shell: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  // The arguments are built in this file (a hash, a temp path, fixed flags), never from outside input.
+  return execSync('npx wrangler ' + args.join(' '), { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 }
 
 async function api(method, path, body, auth = true) {
