@@ -73,6 +73,8 @@ Write scopes do not count. `master` and `user` see every entry.
 
 Rate limiting uses the Workers Rate Limiting binding `APP_LIMITER` keyed by the key hash. Over the limit: `429 {"error":"rate_limited"}` with `Retry-After: 60`.
 
+Failed sign-ins are limited separately by the binding `AUTH_LIMITER`: 10 failures per 60 seconds per caller IP (`CF-Connecting-IP`). A request that fails authentication (no key, a wrong key, a bad token) is counted; over the limit the answer is the same `429 rate_limited` with `Retry-After: 60` instead of `401`. Requests that authenticate (master key, app key, Access sign-in) never touch this limiter. If the binding is missing or errors, requests are let through.
+
 ## Response envelope
 
 - Success: `{"data": ...}`. Lists are `{"data": [...]}`. Create returns `201`.

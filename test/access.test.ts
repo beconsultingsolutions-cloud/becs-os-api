@@ -12,7 +12,9 @@ const CERTS_URL = `https://${TEAM}/cdn-cgi/access/certs`;
 const EMAIL = 'owner@example.com';
 const NOW_MS = Date.UTC(2026, 9, 4, 12, 0, 0);
 const NOW_S = NOW_MS / 1000;
-const accessOn = { ACCESS_TEAM_DOMAIN: TEAM, ACCESS_AUD: AUD, ACCESS_ALLOWED_EMAILS: EMAIL };
+// AUTH_LIMITER is off here: these tests send many bad tokens on purpose to test the token and key-list
+// checks themselves. The failed-sign-in limit has its own tests in rate-limit.test.ts.
+const accessOn = { ACCESS_TEAM_DOMAIN: TEAM, ACCESS_AUD: AUD, ACCESS_ALLOWED_EMAILS: EMAIL, AUTH_LIMITER: undefined };
 
 // --- token making ---------------------------------------------------------------
 

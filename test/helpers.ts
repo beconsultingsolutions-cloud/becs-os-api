@@ -16,6 +16,7 @@ export function testEnv(over: Partial<Env> = {}): Env {
     DB: env.DB,
     CONFIG: env.CONFIG,
     APP_LIMITER: env.APP_LIMITER,
+    AUTH_LIMITER: env.AUTH_LIMITER,
     API_KEY: MASTER_KEY,
     ACCESS_TEAM_DOMAIN: '',
     ACCESS_AUD: '',

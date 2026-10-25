@@ -4,6 +4,7 @@ declare namespace Cloudflare {
     DB: D1Database;
     CONFIG: KVNamespace;
     APP_LIMITER: RateLimit;
+    AUTH_LIMITER: RateLimit;
     API_KEY: string;
     ACCESS_TEAM_DOMAIN: string;
     ACCESS_AUD: string;

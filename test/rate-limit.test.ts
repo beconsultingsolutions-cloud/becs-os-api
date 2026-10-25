@@ -36,10 +36,54 @@ describe('rate limiting', () => {
     for (let i = 0; i < 100; i++) expect((await get('/api/me')).status).toBe(200);
   });
 
-  it('does not count requests with a wrong key against anyone', async () => {
+  it('does not count requests with a wrong key against any app key', async () => {
     const key = await makeAppKey(['tasks:read']);
-    for (let i = 0; i < 70; i++) expect((await get('/api/tasks', { key: 'wrong' })).status).toBe(401);
+    for (let i = 0; i < 70; i++) await get('/api/tasks', { key: 'wrong' });
     expect((await get('/api/tasks', { key })).status).toBe(200);
+  });
+
+  describe('failed sign-ins (AUTH_LIMITER)', () => {
+    const from = (ip: string) => ({ 'CF-Connecting-IP': ip });
+
+    it('answers 401 ten times, then cuts the caller IP off with 429 and Retry-After: 60', async () => {
+      for (let i = 1; i <= 10; i++) {
+        expect((await get('/api/tasks', { key: 'wrong', headers: from('203.0.113.7') })).status, `try ${i}`).toBe(401);
+      }
+      const r = await get('/api/tasks', { key: 'wrong', headers: from('203.0.113.7') });
+      expectErrorShape(r, 429, 'rate_limited');
+      expect(r.headers.get('Retry-After')).toBe('60');
+    });
+
+    it('counts a missing key the same way', async () => {
+      for (let i = 0; i < 10; i++) expect((await get('/api/me', { key: null, headers: from('203.0.113.8') })).status).toBe(401);
+      expectErrorShape(await get('/api/me', { key: null, headers: from('203.0.113.8') }), 429, 'rate_limited');
+    });
+
+    it('keeps a blocked IP out even with a guess, but never blocks the master key or an app key', async () => {
+      const key = await makeAppKey(['tasks:read']);
+      for (let i = 0; i < 11; i++) await get('/api/tasks', { key: 'wrong', headers: from('203.0.113.9') });
+      expect((await get('/api/me', { headers: from('203.0.113.9') })).status).toBe(200);
+      expect((await get('/api/tasks', { key, headers: from('203.0.113.9') })).status).toBe(200);
+    });
+
+    it('gives each IP its own budget', async () => {
+      for (let i = 0; i < 11; i++) await get('/api/tasks', { key: 'wrong', headers: from('203.0.113.10') });
+      expect((await get('/api/tasks', { key: 'wrong', headers: from('203.0.113.11') })).status).toBe(401);
+    });
+
+    it('lets requests through when the limiter is missing or broken', async () => {
+      const broken = {
+        limit: async () => {
+          throw new Error('limiter down');
+        },
+      } as unknown as RateLimit;
+      const { vi } = await import('vitest');
+      const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      expect((await get('/api/tasks', { key: 'wrong', env: { AUTH_LIMITER: undefined } })).status).toBe(401);
+      expect((await get('/api/tasks', { key: 'wrong', env: { AUTH_LIMITER: broken } })).status).toBe(401);
+      expect(spy).toHaveBeenCalled();
+      spy.mockRestore();
+    });
   });
 
   it('lets requests through when the limiter is missing or broken', async () => {

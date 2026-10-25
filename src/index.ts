@@ -16,6 +16,7 @@ export interface Env {
   CONFIG: KVNamespace;
   API_KEY: string; // master key (Worker secret)
   APP_LIMITER?: RateLimit; // Workers Rate Limiting binding (see wrangler.jsonc)
+  AUTH_LIMITER?: RateLimit; // Counts failed sign-ins per caller IP (see wrangler.jsonc)
   ACCESS_TEAM_DOMAIN?: string; // e.g. "myteam.cloudflareaccess.com". Empty = Access sign-in off.
   ACCESS_AUD?: string; // the Access application's AUD tag. Empty = Access sign-in off.
   ACCESS_ALLOWED_EMAILS?: string; // comma-separated emails allowed to sign in. Empty = Access sign-in off.
@@ -126,6 +127,21 @@ async function overRateLimit(env: Env, keyHash: string): Promise<boolean> {
     return !success;
   } catch (err) {
     console.error('Rate limiter unavailable, letting request through', err);
+    return false;
+  }
+}
+
+// Counts a failed sign-in against the caller's IP (binding AUTH_LIMITER, 10 per 60 seconds).
+// Only failures are counted, so a valid key or sign-in is never slowed down by it.
+// Same "fail open" rule as above.
+async function tooManyFailures(env: Env, req: Request): Promise<boolean> {
+  if (!env.AUTH_LIMITER) return false;
+  try {
+    const ip = req.headers.get('CF-Connecting-IP') ?? 'unknown';
+    const { success } = await env.AUTH_LIMITER.limit({ key: 'ip:' + ip });
+    return !success;
+  } catch (err) {
+    console.error('Auth limiter unavailable, letting request through', err);
     return false;
   }
 }
@@ -754,7 +770,10 @@ async function handleApi(req: Request, env: Env, url: URL, parts: string[]): Pro
 
   // 401: no valid key or sign-in (no detail on why). 403: signed in, but not allowed.
   const p = await authenticate(req, env);
-  if (!p) return fail(401, 'unauthorized');
+  if (!p) {
+    if (await tooManyFailures(env, req)) return fail(429, 'rate_limited', undefined, {}, { 'Retry-After': '60' });
+    return fail(401, 'unauthorized');
+  }
 
   // The console is signed in by a cookie, which the browser sends automatically,
   // even on requests started by other websites. So any change made by a signed-in
