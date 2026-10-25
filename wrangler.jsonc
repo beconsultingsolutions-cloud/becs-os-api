@@ -1,5 +1,5 @@
 {
-  "name": "becs-os-api",
+  "name": "becs-os",
   "main": "src/index.ts",
   "compatibility_date": "2026-09-01",
   "observability": { "enabled": true },
@@ -53,8 +53,8 @@
   //                          (letter case and spaces do not matter). Anyone else Access lets through is refused.
   // None is a secret: all are visible in the Zero Trust dashboard or in the tokens themselves.
   "vars": {
-    "ACCESS_TEAM_DOMAIN": "",
-    "ACCESS_AUD": "",
-    "ACCESS_ALLOWED_EMAILS": ""
+    "ACCESS_TEAM_DOMAIN": "becs2025.cloudflareaccess.com",
+    "ACCESS_AUD": "ea52c3204b0387c7c71a48c153e4dcfdf691942bcb18f19ad8c711984636fb67",
+    "ACCESS_ALLOWED_EMAILS": "beconsultingsolutions@gmail.com"
   }
 }

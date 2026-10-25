@@ -21,7 +21,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 // Fixed on purpose: the temporary key must never be sent to any other address.
-const BASE = 'https://becs-os-api.be-consulting-solutions.workers.dev';
+const BASE = 'https://becs-os.be-consulting-solutions.workers.dev';
 const KV_NAMESPACE = '2d7e6ec8dcdf42168a74609d1d8e0edf'; // becs-os-config, same id as wrangler.jsonc
 const TAG = '[live-check]';
 
@@ -152,8 +152,10 @@ async function main() {
   check('a missing record is 404', missing.status === 404, brief(missing));
   const log = await api('GET', '/api/activity?limit=5');
   check('activity log records who did it', log.status === 200 && log.json?.data?.[0]?.actor === 'app:live-check', brief(log));
-  const oldPath = await api('GET', '/tasks');
-  check('old paths without /api are gone (404)', oldPath.status === 404, String(oldPath.status));
+  // Access sits in front of everything outside /api, so an unsigned request is sent to the login (302).
+  // Do not follow the redirect: the login page itself answers 200.
+  const oldPath = await fetch(BASE + '/tasks', { redirect: 'manual' });
+  check('old paths without /api are gone (404, or Access login 302)', oldPath.status === 404 || oldPath.status === 302, String(oldPath.status));
 
   return clientsBefore;
 }
