@@ -1165,12 +1165,124 @@ function taskForm(row, preset) {
   });
 }
 
+/* ---------- Milestones (the ordered steps of a project) and the client log ---------- */
+const NOTE_KINDS = [['note', 'Note'], ['call', 'Call'], ['meeting', 'Meeting'], ['email', 'Email'], ['decision', 'Decision'], ['link', 'Link']];
+const byPosition = (a, b) => (a.position ?? 9999) - (b.position ?? 9999) || a.id - b.id;
+const newestNote = (a, b) => String(b.happened_on || b.created_at || '').localeCompare(String(a.happened_on || a.created_at || '')) || b.id - a.id;
+
+function milestoneForm(row, preset = {}) {
+  formDialog({
+    eyebrow: row ? 'Edit milestone' : 'New milestone', title: row ? row.title : 'Add milestone', row, preset, stamp: stampOf(row),
+    submitLabel: row ? 'Save changes' : 'Add milestone',
+    fields: [
+      { name: 'title', label: 'Milestone', kind: 'text', required: true, max: 200, full: true, focus: true, hint: 'e.g. M2 Brand & digital trust' },
+      { name: 'position', label: 'Order', kind: 'text', numeric: true, max: 4, hint: '1, 2, 3… sets the order' },
+      { name: 'status', label: 'Status', kind: 'select', options: TASK_STATUSES, default: 'todo' },
+      { name: 'due_date', label: 'Due date', kind: 'date' },
+      { name: 'met_when', label: 'Done when', kind: 'textarea', max: 1000, full: true, hint: 'The standard that means this step is met.' },
+      { name: 'notes', label: 'Notes', kind: 'textarea', max: 5000, full: true }
+    ],
+    onSubmit: body => row ? write('PATCH', `/milestones/${row.id}`, body, 'Milestone saved.', null, false)
+      : write('POST', '/milestones', { ...body, project_id: preset.project_id }, 'Milestone added.', null, false),
+    onDelete: row && can('projects:write') ? {
+      confirm: { title: 'Delete milestone?', body: `"${row.title}" will be removed for good. If tasks still belong to it the server will refuse; move those first.` },
+      run: () => write('DELETE', `/milestones/${row.id}`, undefined, 'Milestone deleted.', null, false)
+    } : null
+  });
+}
+
+function noteForm(row, preset = {}) {
+  formDialog({
+    eyebrow: row ? 'Edit log entry' : 'New log entry', title: row ? row.title : 'Add to the log', row, preset, stamp: stampOf(row),
+    submitLabel: row ? 'Save changes' : 'Add entry',
+    fields: [
+      { name: 'title', label: 'What happened', kind: 'text', required: true, max: 200, full: true, focus: true },
+      { name: 'kind', label: 'Kind', kind: 'select', options: NOTE_KINDS, default: 'note' },
+      { name: 'happened_on', label: 'Date', kind: 'date', default: today() },
+      { name: 'url', label: 'Link', kind: 'text', max: 500, full: true, hint: 'Proposal, contract, site or artifact. Starts with https://' },
+      { name: 'body', label: 'Details', kind: 'textarea', max: 5000, full: true }
+    ],
+    onSubmit: body => row ? write('PATCH', `/client_notes/${row.id}`, body, 'Log entry saved.', null, false)
+      : write('POST', '/client_notes', { ...body, client_id: preset.client_id }, 'Added to the log.', null, false),
+    onDelete: row && can('clients:write') ? {
+      confirm: { title: 'Delete log entry?', body: `"${row.title}" will be removed for good.` },
+      run: () => write('DELETE', `/client_notes/${row.id}`, undefined, 'Log entry deleted.', null, false)
+    } : null
+  });
+}
+
+/* A panel listing one project's milestones in order: tick done, open to edit, add. Rebuilds after each change. */
+function milestonesDialog(p) {
+  const dlg = $('#dlg'), writable = can('projects:write');
+  const items = () => ((cache && cache.milestones) || []).filter(m => m.project_id === p.id).sort(byPosition);
+  const render = () => {
+    const ms = items(), done = ms.filter(m => m.status === 'done').length;
+    const toggle = async (m, el) => { try { await write('PATCH', `/milestones/${m.id}`, { status: m.status === 'done' ? 'todo' : 'done' }, m.status === 'done' ? 'Milestone reopened.' : 'Milestone done.', el); render(); } catch { /* shown */ } };
+    const row = m => h('li', { class: 'trow' + (m.status === 'done' ? ' is-done' : '') + (m.due_date && m.status !== 'done' && dayDiff(m.due_date) < 0 ? ' is-late' : '') },
+      h('button', { class: 'check', type: 'button', disabled: !writable, 'aria-pressed': String(m.status === 'done'), 'aria-label': (m.status === 'done' ? 'Reopen ' : 'Mark done: ') + m.title, onclick: e => toggle(m, e.currentTarget) }, icon('check')),
+      h('div', { class: 'tmain' },
+        h('button', { class: 'linkbtn', type: 'button', onclick: () => milestoneForm(m, { project_id: p.id }) }, m.title),
+        h('div', { class: 'tmeta' }, m.position != null ? h('span', {}, '#' + m.position) : null,
+          m.status === 'done'
+            ? h('span', {}, m.completed_at ? 'Completed ' + timeAgo(m.completed_at) : 'Done')
+            : h('span', { class: m.due_date && dayDiff(m.due_date) < 0 ? 'late' : null }, m.due_date ? dueText(m.due_date) : 'No due date'),
+          m.status === 'doing' ? h('span', { class: 'pill doing' }, 'Doing') : null),
+        m.met_when ? h('div', { class: 'snip' }, 'Done when: ' + m.met_when) : null));
+    const next = ms.length ? Math.max(...ms.map(m => m.position || 0)) + 1 : 1;
+    dlg.replaceChildren(h('div', { class: 'dform' },
+      h('div', { class: 'dhead' }, h('div', {}, h('div', { class: 'eyebrow' }, 'Milestones · ' + done + ' of ' + ms.length + ' done'),
+        h('h2', { class: 'h2', id: 'dlgTitle', tabindex: '-1', style: 'margin-top:4px;outline:none' }, p.name), h('div', { class: 'lime-rule' }))),
+      ms.length ? h('ul', { class: 'tlist' }, ms.map(row))
+        : h('div', { class: 'panel empty' }, h('b', {}, 'No milestones yet.'), 'Add the steps of this engagement, in order: what is due when, and what "done" means.'),
+      h('div', { class: 'dfoot' }, h('div', { class: 'right' },
+        h('button', { class: 'btn', type: 'button', onclick: () => dlg.close() }, 'Close'),
+        writable ? h('button', { class: 'btn primary', type: 'button', onclick: () => milestoneForm(null, { project_id: p.id, position: next }) }, icon('plus'), 'Add milestone') : null))));
+  };
+  render();
+  openModal(dlg, $('#dlgTitle', dlg));
+}
+
+/* A client's running log: quick add line, then entries newest first. Rebuilds after each change. */
+function logDialog(c) {
+  const dlg = $('#dlg'), writable = can('clients:write');
+  const items = () => ((cache && cache.notes) || []).filter(n => n.client_id === c.id).sort(newestNote);
+  const render = () => {
+    const notes = items();
+    const kind = h('select', { 'aria-label': 'Kind' }, NOTE_KINDS.map(([k, l]) => opt(k, l)));
+    const title = h('input', { type: 'text', maxlength: 200, placeholder: 'What happened? e.g. Call: approved the print kit', 'aria-label': 'What happened' });
+    const link = h('input', { type: 'text', maxlength: 500, placeholder: 'Link (optional, https://…)', 'aria-label': 'Link' });
+    const add = h('button', { class: 'btn primary', type: 'submit' }, icon('plus'), 'Add');
+    const quick = writable ? h('form', { class: 'quickadd', onsubmit: async ev => {
+      ev.preventDefault();
+      if (!title.value.trim()) { title.focus(); return; }
+      try {
+        await write('POST', '/client_notes', { client_id: c.id, kind: kind.value, title: title.value, url: link.value.trim() || null, happened_on: today() }, 'Added to the log.', add);
+        render(); $('input', dlg)?.focus();
+      } catch { /* shown */ }
+    } }, kind, title, link, add) : null;
+    const entry = n => h('li', {}, h('div', { class: 'grow' },
+      h('div', { class: 'tmeta', style: 'margin:0 0 2px' }, h('span', { class: 'pill tag' }, labelOf(NOTE_KINDS, n.kind)), h('span', {}, n.happened_on ? fmtDate(n.happened_on) : timeAgo(n.created_at))),
+      h('button', { class: 'linkbtn', type: 'button', onclick: () => noteForm(n, { client_id: c.id }) }, n.title),
+      n.body ? h('div', { class: 'snip' }, n.body) : null),
+      n.url ? h('a', { class: 'btn sm', href: n.url, target: '_blank', rel: 'noopener noreferrer', 'aria-label': 'Open link for ' + n.title }, 'Open', icon('next')) : null);
+    dlg.replaceChildren(h('div', { class: 'dform' },
+      h('div', { class: 'dhead' }, h('div', {}, h('div', { class: 'eyebrow' }, 'Client log · ' + notes.length + (notes.length === 1 ? ' entry' : ' entries')),
+        h('h2', { class: 'h2', id: 'dlgTitle', tabindex: '-1', style: 'margin-top:4px;outline:none' }, c.name), h('div', { class: 'lime-rule' }))),
+      quick,
+      h('div', { class: 'panel' }, notes.length ? h('ul', { class: 'rows' }, notes.map(entry))
+        : h('div', { class: 'empty' }, h('b', {}, 'Nothing logged yet.'), 'Calls, meetings, decisions and links to their documents go here.')),
+      h('div', { class: 'dfoot' }, h('div', { class: 'right' }, h('button', { class: 'btn', type: 'button', onclick: () => dlg.close() }, 'Close')))));
+  };
+  render();
+  openModal(dlg, $('#dlgTitle', dlg));
+}
+
 /* Open an edit form for a record we only have an id for (fetches it fresh). */
 async function editById(table, id, control) {
   if (control) control.disabled = true;
   try {
     const row = await api('GET', `/${table}/${id}`);
-    ({ clients: clientForm, projects: projectForm, tasks: taskForm })[table](row);
+    ({ clients: clientForm, projects: projectForm, tasks: taskForm, milestones: milestoneForm, client_notes: noteForm })[table](row);
   } catch (e) { if (e.status !== 401) toast(e.message, true); }
   finally { if (control && control.isConnected) control.disabled = false; }
 }
@@ -1213,13 +1325,15 @@ const overview = {
     const v = ventureParam();
     const dashScopes = ['tasks:read', 'clients:read', 'projects:read', 'ventures:read'];
     const missing = dashScopes.filter(s => !can(s));
-    const [dash, activity] = await Promise.all([
+    const [dash, activity, milestones, projects] = await Promise.all([
       missing.length ? Promise.resolve({ __missing: missing }) : api('GET', '/dashboard' + qs({ ...v, today: today() })).catch(e => { if (e.status === 401) throw e; return { __error: e }; }),
-      maybe('/activity', { limit: ACTIVITY_FETCH }, isAdmin() || can('activity:read') ? null : 'activity:read')
+      maybe('/activity', { limit: ACTIVITY_FETCH }, isAdmin() || can('activity:read') ? null : 'activity:read'),
+      maybeAll('/milestones', {}, 'projects:read'),
+      maybeAll('/projects', v, 'projects:read')
     ]);
-    return { dash, activity };
+    return { dash, activity, milestones, projects };
   },
-  draw({ dash, activity }) {
+  draw({ dash, activity, milestones, projects }) {
     const d = dash.__missing || dash.__error ? null : dash;
     const canWriteTasks = can('tasks:write');
     const mast = h('section', { class: 'deep' },
@@ -1276,7 +1390,8 @@ const overview = {
           h('section', { class: 'block' }, h('h2', { class: 'h2' }, 'Overdue', h('span', { class: 'mono' }, String(lateN))),
             list(late, lateN, 'oldest', 'Nothing overdue.', ' Good place to be.')),
           h('section', { class: 'block' }, h('h2', { class: 'h2' }, 'Due in the next 7 days', h('span', { class: 'mono' }, String(soonN))),
-            list(soon, soonN, 'soonest', 'Nothing due this week.', ' Add due dates to tasks to see them here.'))),
+            list(soon, soonN, 'soonest', 'Nothing due this week.', ' Add due dates to tasks to see them here.')),
+          milestoneBlock(milestones, projects)),
         h('div', {},
           h('section', { class: 'block' }, h('h2', { class: 'h2' }, 'Client pipeline'),
             h('div', { class: 'panel' }, h('ul', { class: 'bars' }, stages.map(([k, l, n]) => h('li', {},
@@ -1294,13 +1409,26 @@ const overview = {
     return parts;
   }
 };
+/* Milestones that are not done and due within 14 days (or already late), for the projects in view. */
+function milestoneBlock(milestones, projects) {
+  if (!milestones || !projects) return null;   // no permission: hide quietly
+  const pname = new Map(projects.map(p => [p.id, p.name]));
+  const due = milestones.filter(m => m.status !== 'done' && m.due_date && pname.has(m.project_id) && dayDiff(m.due_date) <= 14)
+    .sort((a, b) => a.due_date.localeCompare(b.due_date));
+  return h('section', { class: 'block' }, h('h2', { class: 'h2' }, 'Milestones due in 14 days', h('span', { class: 'mono' }, String(due.length))),
+    h('div', { class: 'panel' }, due.length ? h('ul', { class: 'rows' }, due.map(m => h('li', {}, h('div', { class: 'grow' },
+      h('button', { class: 'linkbtn', type: 'button', onclick: e => editById('milestones', m.id, e.currentTarget) }, m.title),
+      h('div', { class: 'tmeta' }, h('span', {}, pname.get(m.project_id)), h('span', { class: dayDiff(m.due_date) < 0 ? 'late' : null }, dueText(m.due_date)))))))
+      : h('div', { class: 'empty' }, h('b', {}, 'No milestones due soon.'), ' Add milestones with due dates on the Projects screen.')));
+}
+
 /* Activity feed. Each log row (SPEC "activity_log") has entity_type (the table
    name, e.g. "tasks"), entity_id, action (created / updated / deleted), detail
    (a JSON string: the fields set, the fields changed, or the deleted row) and
    actor ("master", "user:<email>" or "app:<name>"). */
 const ACTIVITY_SHOWN = 12;     // rows shown on the Overview
 const ACTIVITY_FETCH = 50;     // rows fetched, so updates can borrow a name from an earlier row
-const ENTITY = { tasks: 'Task', clients: 'Client', projects: 'Project', ventures: 'Venture' };
+const ENTITY = { tasks: 'Task', clients: 'Client', projects: 'Project', ventures: 'Venture', milestones: 'Milestone', client_notes: 'Client log' };
 const VENTURE_STATUSES = [['active', 'Active'], ['paused', 'Paused'], ['archived', 'Archived']];
 const parseDetail = a => {
   if (a.detail && typeof a.detail === 'object') return a.detail;
@@ -1312,7 +1440,7 @@ function changeWords(type, k, v) {
   const none = v == null || v === '';
   switch (k) {
     case 'status':
-      if (type === 'tasks') return v === 'done' ? 'marked done' : 'status: ' + labelOf(TASK_STATUSES, v);
+      if (type === 'tasks' || type === 'milestones') return v === 'done' ? 'marked done' : 'status: ' + labelOf(TASK_STATUSES, v);
       return 'status: ' + labelOf(type === 'projects' ? PROJECT_STATUSES : VENTURE_STATUSES, v);
     case 'stage': return 'stage: ' + labelOf(STAGES, v);
     case 'phase': return none ? 'phase cleared' : 'phase: ' + labelOf(PHASES, v);
@@ -1361,8 +1489,8 @@ const clientsScreen = {
   title: 'Clients', stage: '', q: '',
   async load() {
     const v = ventureParam();
-    const [clients, projects] = await Promise.all([needAll('/clients', v), maybeAll('/projects', v, 'projects:read')]);
-    return { clients, projects };
+    const [clients, projects, notes] = await Promise.all([needAll('/clients', v), maybeAll('/projects', v, 'projects:read'), maybeAll('/client_notes', {}, 'clients:read')]);
+    return { clients, projects, notes };
   },
   draw(data) {
     const me = clientsScreen, writable = can('clients:write');
@@ -1398,6 +1526,7 @@ const clientsScreen = {
           !c.contact_name && !c.email && !c.phone ? h('span', { class: 'muted' }, '\u2014') : null),
         h('td', { 'data-label': 'Projects', class: 'count' }, projCount(c.id) === null ? '\u2014' : String(projCount(c.id))),
         h('td', { class: 'r' }, h('div', { class: 'cell-actions' },
+          data.notes ? h('button', { class: 'btn sm', type: 'button', 'data-fk': 'cl-' + c.id, onclick: () => logDialog(c) }, 'Log', h('span', { class: 'mono' }, String(data.notes.filter(n => n.client_id === c.id).length))) : null,
           can('projects:write') ? h('button', { class: 'btn sm', type: 'button', 'data-fk': 'cp-' + c.id, onclick: () => projectForm(null, { venture_id: c.venture_id, client_id: c.id }) }, icon('plus'), 'Project') : null,
           h('button', { class: 'btn sm', type: 'button', 'data-fk': 'ce-' + c.id, onclick: () => clientForm(c) }, icon('edit'), writable ? 'Edit' : 'View'))));
     };
@@ -1420,11 +1549,12 @@ const projectsScreen = {
   async load() {
     const v = ventureParam();
     /* All tasks are read too: the progress bars count done tasks per project. */
-    const [projects, clients, tasks] = await Promise.all([
+    const [projects, clients, tasks, milestones] = await Promise.all([
       needAll('/projects', v),
       maybeAll('/clients', v, 'clients:read'),
-      maybeAll('/tasks', v, 'tasks:read')]);
-    return { projects, clients, tasks };
+      maybeAll('/tasks', v, 'tasks:read'),
+      maybeAll('/milestones', {}, 'projects:read')]);
+    return { projects, clients, tasks, milestones };
   },
   draw(data) {
     const me = projectsScreen, writable = can('projects:write');
@@ -1451,6 +1581,15 @@ const projectsScreen = {
         p.start_date ? h('div', { class: 'kv' }, h('span', {}, 'Started ' + fmtDate(p.start_date))) : null,
         ts ? h('div', {}, h('div', { class: 'kv', style: 'margin-bottom:4px' }, h('span', {}, `${ts.filter(t => t.status === 'done').length} of ${ts.length} tasks done`), h('span', {}, pct + '%')),
           h('div', { class: 'bar', role: 'img', 'aria-label': pct + ' percent of tasks done' }, h('i', { style: `width:${pct}%` }))) : null,
+        /* Milestones: progress and the next step. */
+        (() => {
+          const ms = data.milestones ? data.milestones.filter(m => m.project_id === p.id).sort(byPosition) : null;
+          if (!ms) return null;
+          const nx = ms.find(m => m.status !== 'done');
+          return h('div', { class: 'kv' },
+            h('span', {}, ms.length ? `${ms.filter(m => m.status === 'done').length} of ${ms.length} milestones done` : 'No milestones yet'),
+            nx ? h('span', { class: nx.due_date && dayDiff(nx.due_date) < 0 ? 'late' : null }, 'Next: ' + short(nx.title, 28) + (nx.due_date ? ' · ' + fmtDate(nx.due_date) : '')) : null);
+        })(),
         /* P.E.S. strip: only on projects that have a phase. */
         p.phase ? h('div', { class: 'phase', role: 'group', 'aria-label': 'P.E.S. phase for ' + p.name },
           PHASES.map(([k, l], i) => phaseWritable
@@ -1461,6 +1600,7 @@ const projectsScreen = {
         h('div', { class: 'foot' },
           inlineSelect(PROJECT_STATUSES, p.status, 'Status for ' + p.name, (val, el) => quiet(write('PATCH', `/projects/${p.id}`, { status: val }, `Status set to ${labelOf(PROJECT_STATUSES, val)}.`, el)), 'ps-' + p.id, writable),
           h('span', { style: 'flex:1' }),
+          data.milestones ? h('button', { class: 'btn sm', type: 'button', 'data-fk': 'pm-' + p.id, onclick: () => milestonesDialog(p) }, 'Milestones') : null,
           can('tasks:write') ? h('button', { class: 'btn sm', type: 'button', 'data-fk': 'pt-' + p.id, onclick: () => taskForm(null, { venture_id: p.venture_id, project_id: p.id }) }, icon('plus'), 'Task') : null,
           h('button', { class: 'btn sm', type: 'button', 'data-fk': 'pe-' + p.id, onclick: () => projectForm(p) }, icon('edit'), writable ? 'Edit' : 'View')));
     };
