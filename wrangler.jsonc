@@ -50,6 +50,10 @@
   // No versioned preview addresses (<version>-becs-os-api.<subdomain>.workers.dev): they would sit outside the Access application.
   "preview_urls": false,
 
+  // OFFLINE (2026-11-01): the console was answering without Cloudflare Access in front of it.
+  // Set back to true (and deploy) once Access with Google sign-in is in place.
+  "workers_dev": false,
+
   // Cloudflare Access sign-in for the console. It is switched off unless ALL THREE are filled in
   // (see README "Turning on Cloudflare Access"):
   //   ACCESS_TEAM_DOMAIN     your Zero Trust team domain, e.g. "myteam.cloudflareaccess.com"
