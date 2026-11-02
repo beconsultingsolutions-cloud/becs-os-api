@@ -1,11 +1,20 @@
-// --- The four tables and their rules ------------------------------------------
+// --- The tables and their rules ---------------------------------------------------
 // This file describes every column the API lets callers write, and checks
 // incoming values against the rules in docs/SPEC.md ("Data model").
 // Columns not listed here (id, created_at, updated_at, completed_at, and any
 // unknown field) are ignored when sent.
+// To add a table: add it here (with its permission group), add a migration, and add tests.
 
-export type TableName = 'ventures' | 'clients' | 'projects' | 'tasks';
-export const TABLE_NAMES: TableName[] = ['ventures', 'clients', 'projects', 'tasks'];
+export type TableName = 'ventures' | 'clients' | 'projects' | 'tasks' | 'milestones' | 'client_notes';
+export const TABLE_NAMES: TableName[] = ['ventures', 'clients', 'projects', 'tasks', 'milestones', 'client_notes'];
+
+// App-key permissions come in these four groups ("<group>:read" / "<group>:write").
+// Every table belongs to one group, so new tables need no new scopes or keys.
+export type ScopeGroup = 'ventures' | 'clients' | 'projects' | 'tasks';
+export const SCOPE_GROUPS: ScopeGroup[] = ['ventures', 'clients', 'projects', 'tasks'];
+
+// Client log entry kinds. Add a kind here (and to the migration's CHECK) to extend the log.
+export const NOTE_KINDS = ['note', 'call', 'meeting', 'email', 'decision', 'link'] as const;
 
 // One rule per column. "required" means it must be present (and not empty) on create
 // and can never be set to empty later.
@@ -17,6 +26,8 @@ export type Field =
   | { type: 'priority' } // integer 1..3, default 3
   | { type: 'cents' } // optional whole number, 0 up to MAX_CENTS ($1 billion)
   | { type: 'date' } // optional YYYY-MM-DD
+  | { type: 'int'; min: number; max: number } // optional whole number in a range (ordering, counts)
+  | { type: 'url'; max: number } // optional https:// link
   | { type: 'ref'; table: TableName; required?: boolean }; // id of a row in another table
 
 // Rows in other tables that point at a row in this one. Used to refuse a delete
@@ -30,8 +41,10 @@ interface Child {
 
 export interface TableDef {
   one: string; // "venture", used in messages
+  scope: ScopeGroup; // which app-key permission group guards this table
   fields: Record<string, Field>;
   hasUpdatedAt: boolean; // ventures has no updated_at column
+  completesOnDone?: boolean; // has status todo/doing/done and a server-managed completed_at
   children: Child[];
 }
 
@@ -41,6 +54,7 @@ const NOTES: Field = { type: 'text', max: 5000 };
 export const TABLES: Record<TableName, TableDef> = {
   ventures: {
     one: 'venture',
+    scope: 'ventures',
     hasUpdatedAt: false,
     fields: {
       slug: { type: 'slug' },
@@ -56,6 +70,7 @@ export const TABLES: Record<TableName, TableDef> = {
   },
   clients: {
     one: 'client',
+    scope: 'clients',
     hasUpdatedAt: true,
     fields: {
       venture_id: { type: 'ref', table: 'ventures', required: true },
@@ -69,12 +84,14 @@ export const TABLES: Record<TableName, TableDef> = {
     },
     children: [
       { table: 'projects', column: 'client_id', one: 'project', many: 'projects' },
+      { table: 'client_notes', column: 'client_id', one: 'client log entry', many: 'client log entries' },
       // Reserved table (client portal). The API does not expose it, but a row there still blocks a delete.
       { table: 'portal_links', column: 'client_id', one: 'client portal link', many: 'client portal links' },
     ],
   },
   projects: {
     one: 'project',
+    scope: 'projects',
     hasUpdatedAt: true,
     fields: {
       venture_id: { type: 'ref', table: 'ventures', required: true },
@@ -90,22 +107,58 @@ export const TABLES: Record<TableName, TableDef> = {
     },
     children: [
       { table: 'tasks', column: 'project_id', one: 'task', many: 'tasks' },
+      { table: 'milestones', column: 'project_id', one: 'milestone', many: 'milestones' },
       // Reserved table (Square payments). Not exposed by the API.
       { table: 'payments', column: 'project_id', one: 'payment', many: 'payments' },
     ],
   },
   tasks: {
     one: 'task',
+    scope: 'tasks',
     hasUpdatedAt: true,
+    completesOnDone: true,
     fields: {
       venture_id: { type: 'ref', table: 'ventures', required: true },
       project_id: { type: 'ref', table: 'projects' },
+      milestone_id: { type: 'ref', table: 'milestones' },
       title: { type: 'text', max: 300, required: true },
       status: { type: 'enum', values: ['todo', 'doing', 'done'] },
       priority: PRIORITY,
       filter_tag: { type: 'enum', values: ['revenue', 'systems', 'brand', 'workload'], optional: true },
       due_date: { type: 'date' },
       notes: NOTES,
+    },
+    children: [],
+  },
+  // The ordered steps of an engagement (e.g. M0 Signed ... M5 Retainer). Guarded by project permissions.
+  milestones: {
+    one: 'milestone',
+    scope: 'projects',
+    hasUpdatedAt: true,
+    completesOnDone: true,
+    fields: {
+      project_id: { type: 'ref', table: 'projects', required: true },
+      title: { type: 'text', max: 200, required: true },
+      position: { type: 'int', min: 0, max: 9999 },
+      status: { type: 'enum', values: ['todo', 'doing', 'done'] },
+      due_date: { type: 'date' },
+      met_when: { type: 'text', max: 1000 },
+      notes: NOTES,
+    },
+    children: [{ table: 'tasks', column: 'milestone_id', one: 'task', many: 'tasks' }],
+  },
+  // A running history per client: calls, meetings, decisions, links. Guarded by client permissions.
+  client_notes: {
+    one: 'client log entry',
+    scope: 'clients',
+    hasUpdatedAt: true,
+    fields: {
+      client_id: { type: 'ref', table: 'clients', required: true },
+      kind: { type: 'enum', values: NOTE_KINDS },
+      title: { type: 'text', max: 200, required: true },
+      body: NOTES,
+      url: { type: 'url', max: 500 },
+      happened_on: { type: 'date' },
     },
     children: [],
   },
@@ -202,6 +255,19 @@ export function checkValue(f: Field, raw: unknown): Check {
     case 'date':
       if (typeof v !== 'string' || !isRealDate(v)) return bad('must be a real date written YYYY-MM-DD');
       return ok(v);
+    case 'int': {
+      const n = toInteger(v);
+      if (n === undefined || n < f.min || n > f.max) return bad(`must be a whole number from ${f.min} to ${f.max}`);
+      return ok(n);
+    }
+    case 'url': {
+      if (typeof v !== 'string') return bad('must be text');
+      if (charCount(v) > f.max) return bad(`must be at most ${f.max} characters`);
+      let u: URL | undefined;
+      try { u = new URL(v); } catch { /* not a URL */ }
+      if (!u || u.protocol !== 'https:' || /\s/.test(v)) return bad('must be a link starting with https://');
+      return ok(v);
+    }
     case 'ref': {
       const n = toInteger(v);
       if (n === undefined || n < 1) return bad('must be the id of an existing record (a whole number)');

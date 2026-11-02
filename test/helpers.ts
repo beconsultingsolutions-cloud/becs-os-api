@@ -4,7 +4,7 @@
 // by passing its own env values.
 import { env } from 'cloudflare:workers';
 import worker, { type Env } from '../src/index';
-import { TABLE_NAMES, type TableName } from '../src/tables';
+import { TABLES, TABLE_NAMES, SCOPE_GROUPS, type TableName } from '../src/tables';
 
 export const MASTER_KEY = 'test-master-key-0123456789';
 export const ORIGIN = 'https://becs.test';
@@ -89,7 +89,10 @@ export async function makeAppKey(scopes: string[], app = 'test-app'): Promise<st
   return raw;
 }
 
-export const ALL_SCOPES = [...TABLE_NAMES.flatMap((t) => [`${t}:read`, `${t}:write`]), 'activity:read'];
+export const ALL_SCOPES = [...SCOPE_GROUPS.flatMap((g) => [`${g}:read`, `${g}:write`]), 'activity:read'];
+
+/** The scope an app key needs for this table and action (tables share their group's scopes). */
+export const scopeFor = (table: TableName, action: 'read' | 'write') => `${TABLES[table].scope}:${action}`;
 
 /** Creates a row through the API as master and returns it. Fails the test if refused. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -110,8 +113,26 @@ export function minimal(table: TableName, n = 1): Record<string, unknown> {
       return { venture_id: 1, name: `Project ${n}` };
     case 'tasks':
       return { venture_id: 1, title: `Task ${n}` };
+    case 'milestones':
+      return { project_id: 1, title: `Milestone ${n}` };
+    case 'client_notes':
+      return { client_id: 1, title: `Note ${n}` };
   }
 }
+
+/**
+ * Like minimal(), but first creates (as master) the parent row a child table needs,
+ * so it works on an empty database: a project for a milestone, a client for a log entry.
+ */
+export async function minimalWithParent(table: TableName, n = 1): Promise<Record<string, unknown>> {
+  if (table === 'milestones') return { ...minimal(table, n), project_id: (await create('projects', minimal('projects', 900 + n))).id };
+  if (table === 'client_notes') return { ...minimal(table, n), client_id: (await create('clients', minimal('clients', 900 + n))).id };
+  return minimal(table, n);
+}
+
+/** A small valid change for each table (the field every table has as its label). */
+export const renameBody = (table: TableName) =>
+  ['tasks', 'milestones', 'client_notes'].includes(table) ? { title: 'Changed' } : { name: 'Changed' };
 
 /** The UTC date offset by some days, as YYYY-MM-DD. */
 export function day(offset = 0): string {

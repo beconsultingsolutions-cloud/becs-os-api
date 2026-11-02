@@ -11,8 +11,11 @@ import {
   get,
   makeAppKey,
   minimal,
+  minimalWithParent,
   patch,
   post,
+  renameBody,
+  scopeFor,
   sha256Hex,
   type TableName,
 } from './helpers';
@@ -162,16 +165,16 @@ describe('app key scopes, for every table and action', () => {
 
   async function attempt(table: TableName, action: Action, key: string) {
     // A row to read, change or delete (made with the master key).
-    const row = await create(table, minimal(table, 99));
+    const row = await create(table, await minimalWithParent(table, 99));
     switch (action) {
       case 'list':
         return get(`/api/${table}`, { key });
       case 'read':
         return get(`/api/${table}/${row.id}`, { key });
       case 'create':
-        return post(`/api/${table}`, minimal(table, 2), { key });
+        return post(`/api/${table}`, await minimalWithParent(table, 2), { key });
       case 'update':
-        return patch(`/api/${table}/${row.id}`, table === 'tasks' ? { title: 'Changed' } : { name: 'Changed' }, { key });
+        return patch(`/api/${table}/${row.id}`, renameBody(table), { key });
       case 'delete':
         return del(`/api/${table}/${row.id}`, { key });
     }
@@ -179,7 +182,7 @@ describe('app key scopes, for every table and action', () => {
 
   for (const table of TABLE_NAMES) {
     for (const { action, scope, okStatus } of actions) {
-      const needed = `${table}:${scope}`;
+      const needed = scopeFor(table, scope);
       it(`${table}: ${action} works with only "${needed}"`, async () => {
         const key = await makeAppKey([needed]);
         const r = await attempt(table, action, key);

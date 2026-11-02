@@ -1,4 +1,4 @@
-// Behaviour shared by all four tables: create, read, update, delete, lists,
+// Behaviour shared by every table: create, read, update, delete, lists,
 // filters, limits, ordering, bad ids, wrong methods and bad bodies.
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
@@ -11,20 +11,36 @@ import {
   expectErrorShape,
   get,
   minimal,
+  minimalWithParent,
   patch,
   post,
   type TableName,
 } from './helpers';
 
-const one: Record<TableName, string> = { ventures: 'venture', clients: 'client', projects: 'project', tasks: 'task' };
-const textField: Record<TableName, string> = { ventures: 'name', clients: 'name', projects: 'name', tasks: 'title' };
+const one: Record<TableName, string> = {
+  ventures: 'venture', clients: 'client', projects: 'project', tasks: 'task', milestones: 'milestone', client_notes: 'client log entry',
+};
+const textField: Record<TableName, string> = {
+  ventures: 'name', clients: 'name', projects: 'name', tasks: 'title', milestones: 'title', client_notes: 'title',
+};
+// The long free-text column of each table.
+const longField: Record<TableName, string> = {
+  ventures: 'description', clients: 'notes', projects: 'notes', tasks: 'notes', milestones: 'notes', client_notes: 'body',
+};
+// An enum column to test filters with.
+const enumField: Record<TableName, string> = {
+  ventures: 'status', clients: 'stage', projects: 'status', tasks: 'status', milestones: 'status', client_notes: 'kind',
+};
+// A valid new row (milestones and client log entries get a parent project or client made first).
+const fresh = (table: TableName, n = 1) => minimalWithParent(table, n);
 
 for (const table of TABLE_NAMES) {
   describe(`${table}: basic create, read, update, delete`, () => {
     it(`creates a ${one[table]} and answers 201 with the saved row`, async () => {
-      const r = await post(`/api/${table}`, minimal(table));
+      const body = await fresh(table);
+      const r = await post(`/api/${table}`, body);
       expect(r.status, r.text).toBe(201);
-      expect(r.body.data).toMatchObject(minimal(table));
+      expect(r.body.data).toMatchObject(body);
       expect(r.body.data.id).toBeTypeOf('number');
       expect(r.body.data.created_at).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
       if (table === 'ventures') expect(r.body.data).not.toHaveProperty('updated_at');
@@ -32,7 +48,7 @@ for (const table of TABLE_NAMES) {
     });
 
     it(`reads one ${one[table]} back by id`, async () => {
-      const row = await create(table, minimal(table));
+      const row = await create(table, await fresh(table));
       const r = await get(`/api/${table}/${row.id}`);
       expect(r.status).toBe(200);
       expect(r.body).toEqual({ data: row });
@@ -45,11 +61,11 @@ for (const table of TABLE_NAMES) {
     });
 
     it(`changes only the fields sent in a PATCH`, async () => {
-      const row = await create(table, { ...minimal(table), [table === 'ventures' ? 'description' : 'notes']: 'keep me' });
+      const row = await create(table, { ...(await fresh(table)), [longField[table]]: 'keep me' });
       const r = await patch(`/api/${table}/${row.id}`, { [textField[table]]: 'Renamed' });
       expect(r.status, r.text).toBe(200);
       expect(r.body.data[textField[table]]).toBe('Renamed');
-      expect(r.body.data[table === 'ventures' ? 'description' : 'notes']).toBe('keep me');
+      expect(r.body.data[longField[table]]).toBe('keep me');
       expect(r.body.data.id).toBe(row.id);
       expect(r.body.data.created_at).toBe(row.created_at);
       expect((await get(`/api/${table}/${row.id}`)).body.data[textField[table]]).toBe('Renamed');
@@ -61,7 +77,7 @@ for (const table of TABLE_NAMES) {
     });
 
     it(`deletes a ${one[table]} and then it is gone`, async () => {
-      const row = await create(table, minimal(table));
+      const row = await create(table, await fresh(table));
       const r = await del(`/api/${table}/${row.id}`);
       expect(r.status).toBe(200);
       expect(r.body).toEqual({ data: { id: row.id, deleted: true } });
@@ -70,14 +86,14 @@ for (const table of TABLE_NAMES) {
     });
 
     it('ignores unknown fields in the body', async () => {
-      const r = await post(`/api/${table}`, { ...minimal(table), favourite_colour: 'blue', __proto__x: 1 });
+      const r = await post(`/api/${table}`, { ...(await fresh(table)), favourite_colour: 'blue', __proto__x: 1 });
       expect(r.status).toBe(201);
       expect(r.body.data).not.toHaveProperty('favourite_colour');
     });
 
     it('does not let callers set id, created_at, updated_at or completed_at', async () => {
       const r = await post(`/api/${table}`, {
-        ...minimal(table),
+        ...(await fresh(table)),
         id: 4242,
         created_at: '2000-01-01 00:00:00',
         updated_at: '2000-01-01 00:00:00',
@@ -87,7 +103,7 @@ for (const table of TABLE_NAMES) {
       expect(r.body.data.id).not.toBe(4242);
       expect(r.body.data.created_at).not.toBe('2000-01-01 00:00:00');
       if (table !== 'ventures') expect(r.body.data.updated_at).not.toBe('2000-01-01 00:00:00');
-      if (table === 'tasks') expect(r.body.data.completed_at).toBeNull();
+      if (table === 'tasks' || table === 'milestones') expect(r.body.data.completed_at).toBeNull();
 
       const p = await patch(`/api/${table}/${r.body.data.id}`, { id: 1, created_at: '2000-01-01 00:00:00' });
       expectErrorShape(p, 400, 'empty_body');
@@ -112,14 +128,14 @@ for (const table of TABLE_NAMES) {
     it('refuses an empty body on create and update', async () => {
       expectErrorShape(await call(`/api/${table}`, { method: 'POST', rawBody: '' }), 400, 'empty_body');
       expectErrorShape(await call(`/api/${table}`, { method: 'POST', rawBody: '   ' }), 400, 'empty_body');
-      const row = await create(table, minimal(table));
+      const row = await create(table, await fresh(table));
       expectErrorShape(await call(`/api/${table}/${row.id}`, { method: 'PATCH', rawBody: '' }), 400, 'empty_body');
     });
 
     it('refuses a body with no fields it can save', async () => {
       expectErrorShape(await post(`/api/${table}`, {}), 400, 'empty_body');
       expectErrorShape(await post(`/api/${table}`, { nonsense: 1 }), 400, 'empty_body');
-      const row = await create(table, minimal(table));
+      const row = await create(table, await fresh(table));
       expectErrorShape(await patch(`/api/${table}/${row.id}`, {}), 400, 'empty_body');
     });
 
@@ -149,9 +165,9 @@ for (const table of TABLE_NAMES) {
     });
 
     it('lists rows newest first', async () => {
-      const a = await create(table, minimal(table, 1));
-      const b = await create(table, minimal(table, 2));
-      const c = await create(table, minimal(table, 3));
+      const a = await create(table, await fresh(table, 1));
+      const b = await create(table, await fresh(table, 2));
+      const c = await create(table, await fresh(table, 3));
       const r = await get(`/api/${table}`);
       expect(r.status).toBe(200);
       const ids = (r.body.data as { id: number }[]).map((x) => x.id);
@@ -161,12 +177,12 @@ for (const table of TABLE_NAMES) {
     });
 
     it('honours ?limit=', async () => {
-      for (let i = 1; i <= 4; i++) await create(table, minimal(table, i));
+      for (let i = 1; i <= 4; i++) await create(table, await fresh(table, i));
       expect((await get(`/api/${table}?limit=2`)).body.data).toHaveLength(2);
     });
 
     it('reads the whole list page by page with ?offset=, with no row twice and none missed', async () => {
-      for (let i = 1; i <= 5; i++) await create(table, minimal(table, i));
+      for (let i = 1; i <= 5; i++) await create(table, await fresh(table, i));
       const all = (await get(`/api/${table}?limit=500`)).body.data.map((x: { id: number }) => x.id);
       const paged: number[] = [];
       for (let offset = 0; offset < all.length + 2; offset += 2) {
@@ -178,7 +194,7 @@ for (const table of TABLE_NAMES) {
     });
 
     it('refuses a filter value that breaks the column rule', async () => {
-      const col = table === 'ventures' ? 'status' : table === 'clients' ? 'stage' : 'status';
+      const col = enumField[table];
       const r = await get(`/api/${table}?${col}=nonsense`);
       expectErrorShape(r, 400, 'invalid');
       expect(r.body.message).toBe('Some filters are not valid.');

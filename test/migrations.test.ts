@@ -67,17 +67,33 @@ describe('migrating the live database', () => {
     expect(logCols.map((c) => c.name)).not.toContain('actor');
   });
 
-  it('applies both migrations and records them', async () => {
+  it('applies every migration in order and records them', async () => {
     await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
     const done = await all<{ name: string }>('SELECT name FROM d1_migrations ORDER BY id');
-    expect(done.map((m) => m.name)).toEqual(['0001_baseline.sql', '0002_revamp.sql']);
+    expect(done.map((m) => m.name)).toEqual(['0001_baseline.sql', '0002_revamp.sql', '0003_milestones_client_log.sql']);
+  });
+
+  it('0003 adds milestones, the client log and tasks.milestone_id without touching existing rows', async () => {
+    const tasksBefore = await all('SELECT id, project_id, venture_id, title, status FROM tasks ORDER BY id');
+    await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
+    expect(await all('SELECT id, project_id, venture_id, title, status FROM tasks ORDER BY id')).toEqual(tasksBefore);
+    expect((await all<{ milestone_id: number | null }>('SELECT milestone_id FROM tasks')).every((t) => t.milestone_id === null)).toBe(true);
+    const tables = (await all<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table'")).map((t) => t.name);
+    expect(tables).toEqual(expect.arrayContaining(['milestones', 'client_notes']));
+    await expect(env.DB.prepare("INSERT INTO milestones (project_id, title, status) VALUES (5, 'Bad', 'later')").run()).rejects.toThrow(/CHECK constraint failed/);
+    await expect(env.DB.prepare("INSERT INTO client_notes (client_id, title, kind) VALUES (3, 'Bad', 'gossip')").run()).rejects.toThrow(/CHECK constraint failed/);
+    expect(await all('PRAGMA foreign_key_check')).toEqual([]);
   });
 
   it('keeps every row and id in every table', async () => {
     const before: Record<string, unknown[]> = {};
     for (const t of ['ventures', 'clients', 'tasks', 'payments', 'portal_links']) before[t] = await all(`SELECT * FROM ${t} ORDER BY 1`);
     await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
-    for (const t of Object.keys(before)) expect(await all(`SELECT * FROM ${t} ORDER BY 1`), t).toEqual(before[t]);
+    // 0003 adds tasks.milestone_id, which existing tasks get as empty; everything else is unchanged.
+    for (const t of Object.keys(before)) {
+      const expected = t === 'tasks' ? before[t].map((r) => ({ ...(r as object), milestone_id: null })) : before[t];
+      expect(await all(`SELECT * FROM ${t} ORDER BY 1`), t).toEqual(expected);
+    }
     expect((await all<{ id: number }>('SELECT id FROM projects ORDER BY id')).map((p) => p.id)).toEqual([5, 6, 9, 12, 14]);
     expect(await all('SELECT id, entity_type, entity_id, action, detail, actor FROM activity_log')).toEqual([
       { id: 40, entity_type: 'tasks', entity_id: 20, action: 'created', detail: '{"title":"Task on plan"}', actor: null },
@@ -163,7 +179,7 @@ describe('migrating the live database', () => {
     const before = await all('SELECT * FROM projects ORDER BY id');
     await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
     expect(await all('SELECT * FROM projects ORDER BY id')).toEqual(before);
-    expect(await all('SELECT name FROM d1_migrations')).toHaveLength(2);
+    expect(await all('SELECT name FROM d1_migrations')).toHaveLength(3);
   });
 
   it('serves the migrated data through the API, and blocked deletes still count payments', async () => {

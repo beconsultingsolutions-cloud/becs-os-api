@@ -59,15 +59,17 @@ must carry an `Origin` header equal to the request's own origin, else `403 {"err
 |---|---|---|---|---|
 | `master` | all | yes | all entries | no |
 | `user` | all | yes | all entries | no |
-| `app` | per scope | no (`403`) | needs `activity:read`; sees only entries for tables it holds `<table>:read` on | yes, 60 requests / 60 s per key |
+| `app` | per scope | no (`403`) | needs `activity:read`; sees only entries for tables it can read | yes, 60 requests / 60 s per key |
 
 `/api/admin/keys`, `/api/admin/keys/<app>` are the only admin addresses. Any other `/api/admin/...` path is `404` for every principal.
 
-Scopes: `<table>:read` (GET) and `<table>:write` (POST, PATCH, DELETE) for `ventures`, `clients`, `projects`, `tasks`; plus `activity:read`.
+Scopes: `<group>:read` (GET) and `<group>:write` (POST, PATCH, DELETE) for the four groups `ventures`, `clients`, `projects`, `tasks`; plus `activity:read`.
+Each table belongs to one group: `milestones` uses the `projects` scopes and `client_notes` (the client log) uses the `clients` scopes.
+Other tables use the scopes of their own name. New tables join a group, so they never need new scopes or new keys.
 `GET /api/dashboard` needs `tasks:read`, `clients:read`, `projects:read` and `ventures:read`.
 
 Activity for app keys: log entries copy row data (names, emails, notes, whole deleted rows, actor emails), so
-`activity:read` alone shows nothing. The list is limited to `entity_type IN (<tables the key holds :read on>)`;
+`activity:read` alone shows nothing. The list is limited to `entity_type IN (<tables whose group the key holds :read on>)`;
 with no such tables the answer is `{"data":[]}`. `?entity_type=` naming a table outside that set is `403 forbidden`.
 Write scopes do not count. `master` and `user` see every entry.
 
@@ -106,7 +108,8 @@ Failed sign-ins are limited separately by the binding `AUTH_LIMITER`: 10 failure
 - Paging: lists are ordered by `id`, highest first (ids are never reused, so this is newest first and the same order on every request). Ask for `?limit=500&offset=0`, then `offset=500`, `offset=1000` and so on until a page comes back with fewer rows than the limit. Pages never overlap or skip a row as long as nothing is added or deleted in between; if a row is added between two page requests, the next page can repeat one row, so callers that page should drop duplicate ids.
 - Any non-empty `Authorization` header counts as a key attempt, even if it is not `Bearer`. Tokens longer than 256 characters are refused.
 - API responses carry `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`.
-- A delete is also blocked (`409`) by rows in the reserved `payments` and `portal_links` tables.
+- A delete is blocked (`409`) while other rows point at the row: a venture's clients, projects and tasks; a client's projects and log entries;
+  a project's tasks and milestones; a milestone's tasks. Rows in the reserved `payments` and `portal_links` tables also block it.
 - Access tokens: `exp` is checked strictly; `nbf` gets 60 seconds of grace.
 - Admin: creating a key returns `{"data":{"app","scopes","created_at","key"}}`; revoking returns `{"data":{"app","revoked":<count>}}` or `404`. Bad app names or scopes are `400 invalid` with `fields`.
 - Activity `detail` is a JSON string: the fields set (create), the changed fields (update), or a copy of the deleted row (delete).
@@ -128,7 +131,7 @@ Failed sign-ins are limited separately by the binding `AUTH_LIMITER`: 10 failure
 | POST | `/api/admin/keys` | Body `{"app":"leaa-portal","scopes":["tasks:read"]}`. Returns the raw key once. |
 | DELETE | `/api/admin/keys/<app>` | Revokes every key issued to that app. |
 
-`<table>` is one of `ventures`, `clients`, `projects`, `tasks`.
+`<table>` is one of `ventures`, `clients`, `projects`, `tasks`, `milestones`, `client_notes`.
 
 ### Dashboard shape
 
@@ -196,6 +199,7 @@ Dates are `YYYY-MM-DD`. Timestamps are UTC text. Money is integer cents. Unknown
 |---|---|
 | `venture_id` | required, must exist |
 | `project_id` | optional, must exist |
+| `milestone_id` | optional, must exist. The milestone the task belongs to. |
 | `title` | required, 1..300 chars |
 | `status` | `todo` (default), `doing`, `done` |
 | `priority` | integer 1 (high), 2 (medium), 3 (low, default) |
@@ -203,6 +207,30 @@ Dates are `YYYY-MM-DD`. Timestamps are UTC text. Money is integer cents. Unknown
 | `due_date` | optional date |
 | `completed_at` | set by the server: stamped when status becomes `done`, cleared when it leaves `done`. Not writable. |
 | `notes` | optional, up to 5000 chars |
+
+### milestones
+The ordered steps of a project's engagement (for example M0 Signed ... M5 Retainer). Guarded by the `projects` scopes.
+| Column | Rule |
+|---|---|
+| `project_id` | required, must exist |
+| `title` | required, 1..200 chars |
+| `position` | optional whole number 0..9999, for ordering |
+| `status` | `todo` (default), `doing`, `done` |
+| `due_date` | optional date |
+| `met_when` | optional, up to 1000 chars. The "done when" standard. |
+| `notes` | optional, up to 5000 chars |
+| `completed_at` | set by the server, exactly as for tasks. Not writable. |
+
+### client_notes (the client log)
+A running history per client: calls, meetings, emails, decisions and links. Guarded by the `clients` scopes.
+| Column | Rule |
+|---|---|
+| `client_id` | required, must exist |
+| `kind` | `note` (default), `call`, `meeting`, `email`, `decision`, `link` |
+| `title` | required, 1..200 chars |
+| `body` | optional, up to 5000 chars |
+| `url` | optional link, must start with `https://`, no spaces, up to 500 chars |
+| `happened_on` | optional date |
 
 `id`, `created_at`, `updated_at` are set by the server on every table and are not writable.
 

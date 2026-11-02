@@ -9,7 +9,7 @@
 //   src/access.ts  the Cloudflare Access sign-in token check
 
 import { accessEnabled, readAccessTokens, verifyAccessJwt } from './access';
-import { TABLES, TABLE_NAMES, type TableName, isTableName, toInteger, validateBody, checkValue } from './tables';
+import { TABLES, TABLE_NAMES, SCOPE_GROUPS, type TableName, isTableName, toInteger, validateBody, checkValue } from './tables';
 
 export interface Env {
   DB: D1Database;
@@ -49,7 +49,7 @@ const KEY_PREFIX = 'key:';
 const APP_KEY_SHAPE = /^[0-9a-f]{64}$/;
 const APP_NAME = /^[a-z0-9][a-z0-9-]{1,62}$/;
 const ALL_SCOPES = new Set<string>([
-  ...TABLE_NAMES.flatMap((t) => [`${t}:read`, `${t}:write`]),
+  ...SCOPE_GROUPS.flatMap((g) => [`${g}:read`, `${g}:write`]),
   'activity:read',
 ]);
 // /api/dashboard summarises these tables, so an app key needs read on all of them.
@@ -417,8 +417,8 @@ async function createRow(env: Env, table: TableName, req: Request, actor: string
   const refProblems = await checkReferences(env, table, values);
   if (Object.keys(refProblems).length) return invalid(refProblems);
 
-  // Tasks created already "done" get their completion time stamped now.
-  if (table === 'tasks' && values.status === 'done') values.completed_at = nowText();
+  // Tasks and milestones created already "done" get their completion time stamped now.
+  if (TABLES[table].completesOnDone && values.status === 'done') values.completed_at = nowText();
 
   const cols = Object.keys(values);
   const insert = env.DB.prepare(
@@ -450,8 +450,8 @@ async function updateRow(env: Env, table: TableName, id: number, req: Request, a
   const changes: Record<string, string | number | null> = {};
   for (const [col, v] of Object.entries(values)) if (existing[col] !== v) changes[col] = v;
 
-  // completed_at is managed here: stamped when a task becomes done, cleared when it stops being done.
-  if (table === 'tasks' && 'status' in changes) {
+  // completed_at is managed here: stamped when a task or milestone becomes done, cleared when it stops being done.
+  if (TABLES[table].completesOnDone && 'status' in changes) {
     if (changes.status === 'done' && existing.status !== 'done') changes.completed_at = nowText();
     if (changes.status !== 'done' && existing.status === 'done') changes.completed_at = null;
   }
@@ -527,7 +527,7 @@ async function tableRoute(
   const allowed = idPart === undefined ? 'GET,POST' : 'GET,PATCH,DELETE';
   if (!allowed.split(',').includes(req.method)) return methodNotAllowed(allowed);
 
-  const scope = `${table}:${req.method === 'GET' ? 'read' : 'write'}`;
+  const scope = `${TABLES[table].scope}:${req.method === 'GET' ? 'read' : 'write'}`;
   if (!hasScope(p, scope)) return fail(403, 'forbidden', `This key needs the "${scope}" scope for that.`);
 
   if (idPart === undefined) {
@@ -663,7 +663,7 @@ async function activity(env: Env, url: URL, p: Principal): Promise<Response> {
   if (Object.keys(problems).length) return invalid(problems, 'Some filters are not valid.');
 
   // Which tables' activity this caller may see.
-  const visible = TABLE_NAMES.filter((t) => hasScope(p, `${t}:read`));
+  const visible = TABLE_NAMES.filter((t) => hasScope(p, `${TABLES[t].scope}:read`));
   if (type) {
     if (!visible.includes(type)) {
       return fail(403, 'forbidden', `This key needs the "${type}:read" scope to see that table's activity.`);
