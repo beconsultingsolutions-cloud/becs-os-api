@@ -50,9 +50,9 @@
   // No versioned preview addresses (<version>-becs-os-api.<subdomain>.workers.dev): they would sit outside the Access application.
   "preview_urls": false,
 
-  // OFFLINE (2026-11-01): the console was answering without Cloudflare Access in front of it.
-  // Set back to true (and deploy) once Access with Google sign-in is in place.
-  "workers_dev": false,
+  // Back online 2026-11-02. Offline 2026-11-01 because the "All Workers" Access app had a Bypass
+  // policy; it now uses "Owner only" (Allow, owner email, One-time PIN). /api keeps its own Bypass app.
+  "workers_dev": true,
 
   // Cloudflare Access sign-in for the console. It is switched off unless ALL THREE are filled in
   // (see README "Turning on Cloudflare Access"):
