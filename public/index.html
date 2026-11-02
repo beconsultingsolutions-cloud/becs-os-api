@@ -403,6 +403,7 @@ dialog::backdrop{background:rgba(45,42,95,.45);-webkit-backdrop-filter:blur(3px)
   <symbol id="i-projects" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
   <symbol id="i-tasks" viewBox="0 0 24 24"><path d="M4 4l2 2 3-3.5M4 11l2 2 3-3.5M4 18l2 2 3-3.5"/><path d="M13 5h8M13 12h8M13 19h8"/></symbol>
   <symbol id="i-keys" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M10.8 12.2 20 3M17 6l3 3M14.5 8.5l2 2"/></symbol>
+  <symbol id="i-tools" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 17.5h7M17.5 14v7"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></symbol>
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
   <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></symbol>
@@ -448,6 +449,7 @@ dialog::backdrop{background:rgba(45,42,95,.45);-webkit-backdrop-filter:blur(3px)
       <a href="#/clients" data-r="clients"><svg class="ico" aria-hidden="true"><use href="#i-clients"/></svg>Clients</a>
       <a href="#/projects" data-r="projects"><svg class="ico" aria-hidden="true"><use href="#i-projects"/></svg>Projects</a>
       <a href="#/tasks" data-r="tasks"><svg class="ico" aria-hidden="true"><use href="#i-tasks"/></svg>Tasks</a>
+      <a href="#/tools" data-r="tools" id="navTools" hidden><svg class="ico" aria-hidden="true"><use href="#i-tools"/></svg>Tools</a>
       <a href="#/keys" data-r="keys" id="navKeys" hidden><svg class="ico" aria-hidden="true"><use href="#i-keys"/></svg>Keys</a>
     </nav>
     <div class="rail-foot"><i></i>BE Consulting Solutions<br>Clients, projects, tasks</div>
@@ -795,6 +797,7 @@ async function enterApp() {
   await loadVentures();
   drawWho();
   $('#navKeys').hidden = !isAdmin();
+  $('#navTools').hidden = !isAdmin();
   $('#gate').hidden = true; $('#shell').hidden = false;
   route();
 }
@@ -1709,12 +1712,54 @@ function showNewKey(out, appName) {
   if (raw) field.select();
 }
 
+/* ---------- 9f Tools (owner only): every BECS tool in one launcher ---------- */
+/* The list lives in public/tools.json (served behind Access like this page). Add a tool there. */
+let toolsQuery = '';
+const ACCESS_PILL = { public: ['pill', 'Public'], login: ['pill p2', 'Login'], dead: ['pill late', 'Not found'] };
+const toolsScreen = {
+  title: 'Tools',
+  async load() {
+    const res = await fetch('tools.json', { cache: 'no-store' });
+    if (!res.ok) throw Object.assign(new Error('Could not load the tools list (' + res.status + ').'), { status: res.status });
+    return res.json();
+  },
+  draw(data) {
+    const q = toolsQuery.trim().toLowerCase();
+    const match = t => !q || [t.name, t.for, t.host, t.use].some(v => String(v || '').toLowerCase().includes(q));
+    const groups = (data.groups || []).map(g => ({ ...g, tools: g.tools.filter(match) })).filter(g => g.tools.length);
+    const total = (data.groups || []).reduce((n, g) => n + g.tools.length, 0);
+    const shown = groups.reduce((n, g) => n + g.tools.length, 0);
+    const search = h('input', { type: 'search', placeholder: 'Search tools, clients or hosts', 'aria-label': 'Search tools', value: toolsQuery, 'data-fk': 'tools-q',
+      oninput: e => { toolsQuery = e.target.value; redraw(); } });
+    return [
+      shead('BECS OS · Tools', 'Tools', `Every BECS tool in one place: ${total} tools across Netlify, Lovable, Vercel, Claude and Notion. Login tools open their own sign-in.`),
+      h('div', { class: 'filters' }, h('div', { class: 'f wide' }, h('label', {}, 'Search'), search),
+        h('div', { class: 'meta', style: 'align-self:center' }, q ? `${shown} of ${total} shown` : `Checked ${data.checked || data.updated || ''}`)),
+      groups.length ? groups.map(g => h('section', { class: 'block' },
+        h('h2', { class: 'h2' }, g.name, h('span', { class: 'mono' }, String(g.tools.length))),
+        h('div', { class: 'panel' }, h('table', { class: 'tbl' },
+          h('thead', {}, h('tr', {}, ['Tool', 'For', 'Where', ''].map(x => h('th', { scope: 'col' }, x || h('span', { class: 'sr' }, 'Open'))))),
+          h('tbody', {}, g.tools.map(t => {
+            const [cls, label] = ACCESS_PILL[t.access] || ACCESS_PILL.public;
+            return h('tr', {},
+              h('td', {}, h('div', { class: 'name' }, t.name), t.use ? h('div', { class: 'snip' }, t.use) : null),
+              h('td', { 'data-label': 'For' }, t.for || '—'),
+              h('td', { 'data-label': 'Where' }, h('div', { class: 'stage-cell' }, h('span', { class: 'pill tag' }, t.host), h('span', { class: cls }, label))),
+              h('td', { class: 'r' }, h('div', { class: 'cell-actions' },
+                h('a', { class: 'btn sm', href: t.url, target: '_blank', rel: 'noopener noreferrer', 'aria-label': 'Open ' + t.name }, 'Open', icon('next')))));
+          }))))))
+        : h('div', { class: 'panel empty' }, h('b', {}, 'No tools match.'), 'Try a client name, a host such as Lovable, or clear the search.')
+    ];
+  }
+};
+
 /* =====================================================================
    10  ROUTER AND START-UP
    ===================================================================== */
-const SCREENS = { overview, clients: clientsScreen, projects: projectsScreen, tasks: tasksScreen, keys: keysScreen };
+const SCREENS = { overview, clients: clientsScreen, projects: projectsScreen, tasks: tasksScreen, tools: toolsScreen, keys: keysScreen };
 let renderToken = 0, current = null, cache = null;
-const routeName = () => { const r = location.hash.replace(/^#\/?/, ''); return SCREENS[r] && (r !== 'keys' || isAdmin()) ? r : 'overview'; };
+const OWNER_ONLY = new Set(['keys', 'tools']);
+const routeName = () => { const r = location.hash.replace(/^#\/?/, ''); return SCREENS[r] && (!OWNER_ONLY.has(r) || isAdmin()) ? r : 'overview'; };
 
 /* Full load of the current screen (on navigation or venture change). */
 async function route() {
@@ -1733,7 +1778,7 @@ async function route() {
   } catch (e) {
     if (token !== renderToken || e.status === 401) return;
     cache = null;
-    const what = { overview: 'the overview', clients: 'clients', projects: 'projects', tasks: 'tasks', keys: 'app keys' }[name];
+    const what = { overview: 'the overview', clients: 'clients', projects: 'projects', tasks: 'tasks', tools: 'the tools list', keys: 'app keys' }[name];
     const scope = { clients: 'clients:read', projects: 'projects:read', tasks: 'tasks:read' }[name];
     $('#app').replaceChildren(shead('BECS OS', screen.title, null), errorNotice(e, what, scope));
   }
