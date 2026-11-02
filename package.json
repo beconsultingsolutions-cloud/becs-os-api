@@ -10,7 +10,8 @@
     "db:migrate:remote": "wrangler d1 migrations apply becs-os-core --remote",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck:test": "tsc --noEmit -p test"
+    "typecheck:test": "tsc --noEmit -p test",
+    "backup": "node scripts/backup.mjs"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "1.4.7",
