@@ -117,6 +117,8 @@ export function minimal(table: TableName, n = 1): Record<string, unknown> {
       return { project_id: 1, title: `Milestone ${n}` };
     case 'client_notes':
       return { client_id: 1, title: `Note ${n}` };
+    case 'payments':
+      return { project_id: 1, label: `Invoice ${n}`, amount_cents: 1000 * n };
   }
 }
 
@@ -125,14 +127,14 @@ export function minimal(table: TableName, n = 1): Record<string, unknown> {
  * so it works on an empty database: a project for a milestone, a client for a log entry.
  */
 export async function minimalWithParent(table: TableName, n = 1): Promise<Record<string, unknown>> {
-  if (table === 'milestones') return { ...minimal(table, n), project_id: (await create('projects', minimal('projects', 900 + n))).id };
+  if (table === 'milestones' || table === 'payments') return { ...minimal(table, n), project_id: (await create('projects', minimal('projects', 900 + n))).id };
   if (table === 'client_notes') return { ...minimal(table, n), client_id: (await create('clients', minimal('clients', 900 + n))).id };
   return minimal(table, n);
 }
 
 /** A small valid change for each table (the field every table has as its label). */
 export const renameBody = (table: TableName) =>
-  ['tasks', 'milestones', 'client_notes'].includes(table) ? { title: 'Changed' } : { name: 'Changed' };
+  table === 'payments' ? { label: 'Changed' } : ['tasks', 'milestones', 'client_notes'].includes(table) ? { title: 'Changed' } : { name: 'Changed' };
 
 /** The UTC date offset by some days, as YYYY-MM-DD. */
 export function day(offset = 0): string {

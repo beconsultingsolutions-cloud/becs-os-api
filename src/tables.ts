@@ -5,8 +5,8 @@
 // unknown field) are ignored when sent.
 // To add a table: add it here (with its permission group), add a migration, and add tests.
 
-export type TableName = 'ventures' | 'clients' | 'projects' | 'tasks' | 'milestones' | 'client_notes';
-export const TABLE_NAMES: TableName[] = ['ventures', 'clients', 'projects', 'tasks', 'milestones', 'client_notes'];
+export type TableName = 'ventures' | 'clients' | 'projects' | 'tasks' | 'milestones' | 'client_notes' | 'payments';
+export const TABLE_NAMES: TableName[] = ['ventures', 'clients', 'projects', 'tasks', 'milestones', 'client_notes', 'payments'];
 
 // App-key permissions come in these four groups ("<group>:read" / "<group>:write").
 // Every table belongs to one group, so new tables need no new scopes or keys.
@@ -16,6 +16,11 @@ export const SCOPE_GROUPS: ScopeGroup[] = ['ventures', 'clients', 'projects', 't
 // Client log entry kinds. Add a kind here (and to the migration's CHECK) to extend the log.
 export const NOTE_KINDS = ['note', 'call', 'meeting', 'email', 'decision', 'link'] as const;
 
+// Invoice statuses. "Late" is not a status: it is worked out from due_date (see the dashboard).
+export const PAYMENT_STATUSES = ['unpaid', 'sent', 'partial', 'paid', 'void'] as const;
+// Statuses that still count as money owed.
+export const PAYMENT_OPEN = ['unpaid', 'sent', 'partial'] as const;
+
 // One rule per column. "required" means it must be present (and not empty) on create
 // and can never be set to empty later.
 export type Field =
@@ -24,7 +29,7 @@ export type Field =
   | { type: 'slug' } // always required
   | { type: 'enum'; values: readonly string[]; optional?: boolean } // not optional = has a DB default, never null
   | { type: 'priority' } // integer 1..3, default 3
-  | { type: 'cents' } // optional whole number, 0 up to MAX_CENTS ($1 billion)
+  | { type: 'cents'; required?: boolean } // whole number, 0 up to MAX_CENTS ($1 billion)
   | { type: 'date' } // optional YYYY-MM-DD
   | { type: 'int'; min: number; max: number } // optional whole number in a range (ordering, counts)
   | { type: 'url'; max: number } // optional https:// link
@@ -44,7 +49,9 @@ export interface TableDef {
   scope: ScopeGroup; // which app-key permission group guards this table
   fields: Record<string, Field>;
   hasUpdatedAt: boolean; // ventures has no updated_at column
-  completesOnDone?: boolean; // has status todo/doing/done and a server-managed completed_at
+  // A server-managed time stamp: set when status becomes `status`, cleared when it leaves it
+  // (tasks and milestones: done -> completed_at; invoices: paid -> paid_at).
+  stamp?: { status: string; column: string };
   children: Child[];
 }
 
@@ -116,7 +123,7 @@ export const TABLES: Record<TableName, TableDef> = {
     one: 'task',
     scope: 'tasks',
     hasUpdatedAt: true,
-    completesOnDone: true,
+    stamp: { status: 'done', column: 'completed_at' },
     fields: {
       venture_id: { type: 'ref', table: 'ventures', required: true },
       project_id: { type: 'ref', table: 'projects' },
@@ -135,7 +142,7 @@ export const TABLES: Record<TableName, TableDef> = {
     one: 'milestone',
     scope: 'projects',
     hasUpdatedAt: true,
-    completesOnDone: true,
+    stamp: { status: 'done', column: 'completed_at' },
     fields: {
       project_id: { type: 'ref', table: 'projects', required: true },
       title: { type: 'text', max: 200, required: true },
@@ -145,7 +152,10 @@ export const TABLES: Record<TableName, TableDef> = {
       met_when: { type: 'text', max: 1000 },
       notes: NOTES,
     },
-    children: [{ table: 'tasks', column: 'milestone_id', one: 'task', many: 'tasks' }],
+    children: [
+      { table: 'tasks', column: 'milestone_id', one: 'task', many: 'tasks' },
+      { table: 'payments', column: 'milestone_id', one: 'invoice', many: 'invoices' },
+    ],
   },
   // A running history per client: calls, meetings, decisions, links. Guarded by client permissions.
   client_notes: {
@@ -159,6 +169,27 @@ export const TABLES: Record<TableName, TableDef> = {
       body: NOTES,
       url: { type: 'url', max: 500 },
       happened_on: { type: 'date' },
+    },
+    children: [],
+  },
+  // Invoices: one row per payment due on a project ("Deposit 50%", "November retainer").
+  // Guarded by project permissions. Square sync (src/square.ts) updates status by square_invoice_id.
+  payments: {
+    one: 'invoice',
+    scope: 'projects',
+    hasUpdatedAt: true,
+    stamp: { status: 'paid', column: 'paid_at' },
+    fields: {
+      project_id: { type: 'ref', table: 'projects', required: true },
+      milestone_id: { type: 'ref', table: 'milestones' },
+      label: { type: 'text', max: 200, required: true },
+      amount_cents: { type: 'cents', required: true },
+      status: { type: 'enum', values: PAYMENT_STATUSES },
+      due_date: { type: 'date' },
+      sent_on: { type: 'date' },
+      square_url: { type: 'url', max: 500 },
+      square_invoice_id: { type: 'text', max: 100 },
+      notes: NOTES,
     },
     children: [],
   },
@@ -179,7 +210,7 @@ const ok = (value: string | number | null): Check => ({ ok: true, value });
 const bad = (problem: string): Check => ({ ok: false, problem });
 
 const isRequired = (f: Field) =>
-  f.type === 'slug' || ((f.type === 'text' || f.type === 'ref') && !!f.required);
+  f.type === 'slug' || ((f.type === 'text' || f.type === 'ref' || f.type === 'cents') && !!f.required);
 
 /** Character count that treats an emoji as one character. */
 const charCount = (s: string) => [...s].length;

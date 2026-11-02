@@ -10,6 +10,7 @@
 
 import { accessEnabled, readAccessTokens, verifyAccessJwt } from './access';
 import { TABLES, TABLE_NAMES, SCOPE_GROUPS, type TableName, isTableName, toInteger, validateBody, checkValue } from './tables';
+import { squareWebhook, reconcileSquare } from './square';
 
 export interface Env {
   DB: D1Database;
@@ -20,6 +21,11 @@ export interface Env {
   ACCESS_TEAM_DOMAIN?: string; // e.g. "myteam.cloudflareaccess.com". Empty = Access sign-in off.
   ACCESS_AUD?: string; // the Access application's AUD tag. Empty = Access sign-in off.
   ACCESS_ALLOWED_EMAILS?: string; // comma-separated emails allowed to sign in. Empty = Access sign-in off.
+  // Square sync (src/square.ts). Empty = sync off.
+  SQUARE_WEBHOOK_SIGNATURE_KEY?: string; // Worker secret, from the Square webhook subscription
+  SQUARE_ACCESS_TOKEN?: string; // Worker secret, used read-only by the daily check
+  SQUARE_WEBHOOK_URL?: string; // exact URL registered in Square (default: the request URL)
+  SQUARE_API_BASE?: string; // default https://connect.squareup.com
 }
 
 // --- Who is calling ------------------------------------------------------------
@@ -417,8 +423,9 @@ async function createRow(env: Env, table: TableName, req: Request, actor: string
   const refProblems = await checkReferences(env, table, values);
   if (Object.keys(refProblems).length) return invalid(refProblems);
 
-  // Tasks and milestones created already "done" get their completion time stamped now.
-  if (TABLES[table].completesOnDone && values.status === 'done') values.completed_at = nowText();
+  // Rows created already in their stamp status (a task "done", an invoice "paid") get the time stamped now.
+  const stamp = TABLES[table].stamp;
+  if (stamp && values.status === stamp.status) values[stamp.column] = nowText();
 
   const cols = Object.keys(values);
   const insert = env.DB.prepare(
@@ -445,15 +452,32 @@ async function updateRow(env: Env, table: TableName, id: number, req: Request, a
   const existing = await getRow(env, table, id);
   if (!existing) return notFoundRow(table, id);
   if (Object.keys(fields).length) return invalid(fields);
+  return applyUpdate(env, table, id, existing, values, actor);
+}
 
+/**
+ * Writes already-validated values to one row: keeps only real changes, manages the
+ * stamp column, checks references, and logs the change in the same batch.
+ * Used by PATCH and by integrations (Square sync), so both follow the same rules.
+ */
+export async function applyUpdate(
+  env: Env,
+  table: TableName,
+  id: number,
+  existing: Record<string, unknown>,
+  values: Record<string, string | number | null>,
+  actor: string
+): Promise<Response> {
   // Keep only the fields that actually change.
   const changes: Record<string, string | number | null> = {};
   for (const [col, v] of Object.entries(values)) if (existing[col] !== v) changes[col] = v;
 
-  // completed_at is managed here: stamped when a task or milestone becomes done, cleared when it stops being done.
-  if (TABLES[table].completesOnDone && 'status' in changes) {
-    if (changes.status === 'done' && existing.status !== 'done') changes.completed_at = nowText();
-    if (changes.status !== 'done' && existing.status === 'done') changes.completed_at = null;
+  // The stamp column (completed_at, paid_at) is managed here: set when the row enters
+  // its stamp status, cleared when it leaves it.
+  const stamp = TABLES[table].stamp;
+  if (stamp && 'status' in changes) {
+    if (changes.status === stamp.status && existing.status !== stamp.status) changes[stamp.column] = nowText();
+    if (changes.status !== stamp.status && existing.status === stamp.status) changes[stamp.column] = null;
   }
 
   if (!Object.keys(changes).length) return ok(existing); // nothing changed: no write, no log
@@ -622,6 +646,27 @@ async function dashboard(env: Env, url: URL): Promise<Response> {
     prep(`SELECT COUNT(*) AS n FROM tasks WHERE status != 'done' AND due_date BETWEEN ? AND ?${and}`, today, soonEnd),
   ]);
 
+  // Money (invoices). "Late" = due date passed and still open (unpaid, sent, partial).
+  // Invoices have no venture of their own, so the venture filter goes through their project.
+  const monthStart = today.slice(0, 8) + '01';
+  const soon14 = new Date(Date.parse(today + 'T00:00:00Z') + 14 * 86_400_000).toISOString().slice(0, 10);
+  const pAnd = ventureId ? ' AND p.venture_id = ?' : '';
+  const OPEN = "pay.status IN ('unpaid', 'sent', 'partial')";
+  const mprep = (sql: string, ...first: unknown[]) => env.DB.prepare(sql).bind(...first, ...bind);
+  const [owed, late, paidMonth, dueSoonPay] = await env.DB.batch([
+    mprep(`SELECT COUNT(*) AS n, CAST(TOTAL(pay.amount_cents) AS INTEGER) AS cents FROM payments pay JOIN projects p ON p.id = pay.project_id WHERE ${OPEN}${pAnd}`),
+    mprep(`SELECT COUNT(*) AS n, CAST(TOTAL(pay.amount_cents) AS INTEGER) AS cents FROM payments pay JOIN projects p ON p.id = pay.project_id WHERE ${OPEN} AND pay.due_date IS NOT NULL AND pay.due_date < ?${pAnd}`, today),
+    mprep(`SELECT COUNT(*) AS n, CAST(TOTAL(pay.amount_cents) AS INTEGER) AS cents FROM payments pay JOIN projects p ON p.id = pay.project_id WHERE pay.status = 'paid' AND pay.paid_at >= ?${pAnd}`, monthStart),
+    mprep(
+      `SELECT pay.id, pay.label, pay.amount_cents, pay.status, pay.due_date, pay.project_id, p.name AS project_name
+       FROM payments pay JOIN projects p ON p.id = pay.project_id
+       WHERE ${OPEN} AND pay.due_date IS NOT NULL AND pay.due_date <= ?${pAnd}
+       ORDER BY pay.due_date, pay.id LIMIT 25`,
+      soon14
+    ),
+  ]);
+  const money = (r: D1Result) => r.results[0] as { n: number; cents: number };
+
   const proj = projects.results[0] as { n: number; cents: number };
   return ok({
     open_tasks: (open.results[0] as { n: number }).n,
@@ -633,6 +678,15 @@ async function dashboard(env: Env, url: URL): Promise<Response> {
     client_pipeline: pipeline.results,
     active_projects: proj.n,
     active_project_value_cents: proj.cents,
+    money: {
+      outstanding_count: money(owed).n,
+      outstanding_cents: money(owed).cents,
+      late_count: money(late).n,
+      late_cents: money(late).cents,
+      paid_this_month_count: money(paidMonth).n,
+      paid_this_month_cents: money(paidMonth).cents,
+      due_within_14_days: dueSoonPay.results, // includes late ones; at most 25
+    },
   });
 }
 
@@ -755,6 +809,10 @@ async function adminKeys(req: Request, env: Env, app: string | undefined): Promi
   return ok({ app, revoked: matches.length });
 }
 
+// Square sync writes through applyUpdate, so it follows the same rules and log as PATCH.
+const squareApply = (env: Env) => (table: TableName, id: number, existing: Record<string, unknown>, values: Record<string, string | number | null>, actor: string) =>
+  applyUpdate(env, table, id, existing, values, actor);
+
 // --- Router ----------------------------------------------------------------------
 
 async function handleApi(req: Request, env: Env, url: URL, parts: string[]): Promise<Response> {
@@ -766,6 +824,15 @@ async function handleApi(req: Request, env: Env, url: URL, parts: string[]): Pro
   // Public: no sign-in needed.
   if (section === 'health' && parts.length === 2) {
     return req.method === 'GET' ? json({ ok: true, service: 'becs-os-api' }) : methodNotAllowed('GET');
+  }
+
+  // Public, but signed: Square's invoice webhook. No API key; the HMAC signature is the
+  // proof (checked in src/square.ts). Only bad signatures count against the per-IP
+  // failure limit, so Square's real messages are never slowed down.
+  if (section === 'webhooks' && a === 'square' && parts.length === 3) {
+    const res = await squareWebhook(req, env, squareApply(env));
+    if (res.status === 401 && (await tooManyFailures(env, req))) return fail(429, 'rate_limited', undefined, {}, { 'Retry-After': '60' });
+    return res;
   }
 
   // 401: no valid key or sign-in (no detail on why). 403: signed in, but not allowed.
@@ -832,5 +899,10 @@ export default {
       console.error('Unexpected error', req.method, url.pathname, err);
       return fail(500, 'server_error');
     }
+  },
+
+  // Daily Square check (cron in wrangler.jsonc): fixes anything a missed webhook left behind.
+  async scheduled(_ctrl: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(reconcileSquare(env, squareApply(env)).then((r) => console.log('square reconcile', JSON.stringify(r))));
   },
 } satisfies ExportedHandler<Env>;

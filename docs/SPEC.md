@@ -119,6 +119,7 @@ Failed sign-ins are limited separately by the binding `AUTH_LIMITER`: 10 failure
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/api/health` | Public. `{"ok":true,"service":"becs-os-api"}` |
+| POST | `/api/webhooks/square` | Public, **HMAC-signed, no API key**. Square's invoice webhook. Accepted only if `x-square-hmacsha256-signature` equals base64(HMAC-SHA256(`SQUARE_WEBHOOK_SIGNATURE_KEY`, `SQUARE_WEBHOOK_URL` + raw body)); else `401 bad_signature` (counts against the per-IP failure limit, then `429`). `503 not_configured` until the key is set. Updates `payments` rows by `square_invoice_id` (never creates rows). See "Square sync". |
 | GET | `/api/me` | Who am I. `{"data":{"kind":"master"}}`, `{"data":{"kind":"user","email":"..."}}` or `{"data":{"kind":"app","app":"...","scopes":[...]}}` |
 | GET | `/api/dashboard` | Optional `?venture_id=` and `?today=`. Shape below. |
 | GET | `/api/<table>` | List. Filter by any writable column (`?status=todo&venture_id=1`). `?limit=` 1..500, default 100. `?offset=` rows to skip, default 0 (see "Paging"). Newest first. |
@@ -131,7 +132,7 @@ Failed sign-ins are limited separately by the binding `AUTH_LIMITER`: 10 failure
 | POST | `/api/admin/keys` | Body `{"app":"leaa-portal","scopes":["tasks:read"]}`. Returns the raw key once. |
 | DELETE | `/api/admin/keys/<app>` | Revokes every key issued to that app. |
 
-`<table>` is one of `ventures`, `clients`, `projects`, `tasks`, `milestones`, `client_notes`.
+`<table>` is one of `ventures`, `clients`, `projects`, `tasks`, `milestones`, `client_notes`, `payments` (invoices).
 
 ### Dashboard shape
 
@@ -145,7 +146,13 @@ Failed sign-ins are limited separately by the binding `AUTH_LIMITER`: 10 failure
   "open_tasks_by_venture": [{"venture_id":1,"slug":"becs","name":"BE Consulting Solutions","open_tasks":7}],
   "client_pipeline": [{"stage":"lead","n":8}],
   "active_projects": 0,
-  "active_project_value_cents": 0
+  "active_project_value_cents": 0,
+  "money": {
+    "outstanding_count": 2, "outstanding_cents": 560000,
+    "late_count": 1, "late_cents": 280000,
+    "paid_this_month_count": 1, "paid_this_month_cents": 280000,
+    "due_within_14_days": [{"id":4,"label":"Balance at launch","amount_cents":280000,"status":"sent","due_date":"2026-11-13","project_id":10,"project_name":"..."}]
+  }
 }}
 ```
 
@@ -158,6 +165,7 @@ Failed sign-ins are limited separately by the binding `AUTH_LIMITER`: 10 failure
 - `active_projects` / `active_project_value_cents`: projects whose status is `planning` or `active`.
   The value is added up with SQLite `TOTAL()` and cast back to whole cents, so no stored data can make it fail.
 - With `?venture_id=`, every figure is limited to that venture (`open_tasks_by_venture` then has one row).
+- `money`: invoices. Open = `unpaid`, `sent` or `partial`. `outstanding_*` = all open; `late_*` = open with `due_date` before today; `paid_this_month_*` = `paid` with `paid_at` on or after the 1st of today's month; `due_within_14_days` = open with a due date up to today + 14 days (late ones included), soonest first, max 25. Invoices have no venture of their own: `?venture_id=` filters them through their project.
 
 ## Data model
 
@@ -232,13 +240,35 @@ A running history per client: calls, meetings, emails, decisions and links. Guar
 | `url` | optional link, must start with `https://`, no spaces, up to 500 chars |
 | `happened_on` | optional date |
 
+### payments (invoices)
+One row per payment due on a project. Called "Invoices" in the console. Guarded by the `projects` scopes.
+| Column | Rule |
+|---|---|
+| `project_id` | required, must exist |
+| `milestone_id` | optional, must exist. The milestone the payment is tied to (e.g. balance due at launch). |
+| `label` | required, 1..200 chars |
+| `amount_cents` | required integer, 0 to 100000000000 ($1 billion) |
+| `status` | `unpaid` (default, not sent yet), `sent`, `partial`, `paid`, `void`. "Late" is not a status: open with `due_date` before today. |
+| `due_date`, `sent_on` | optional dates |
+| `square_url` | optional link to the Square invoice, must start with `https://` |
+| `square_invoice_id` | optional, up to 100 chars. The key the Square sync matches on. |
+| `notes` | optional, up to 5000 chars |
+| `paid_at` | set by the server: stamped when status becomes `paid`, cleared when it leaves `paid`. Not writable. |
+
 `id`, `created_at`, `updated_at` are set by the server on every table and are not writable.
 
+### Square sync
+Keeps invoice status in step with the BECS Square account, matched by `square_invoice_id`. It only reads from Square and never creates rows here.
+- **Webhook** (`POST /api/webhooks/square`, above): Square invoice status maps to ours: `DRAFT` -> `unpaid`; `UNPAID`, `SCHEDULED`, `PAYMENT_PENDING` -> `sent`; `PARTIALLY_PAID` -> `partial`; `PAID` -> `paid`; `CANCELED`, `FAILED` -> `void`. Other statuses (refunds) and non-invoice events are acknowledged (`200 {"data":{"ignored":true}}`) and change nothing. An event repeating the current status changes nothing.
+- **Daily check** (Worker cron, 13:00 UTC): for every open invoice with a `square_invoice_id`, `GET /v2/invoices/{id}` with `SQUARE_ACCESS_TOKEN` and apply the same mapping. Off until the token is set.
+- Every change goes through the normal update path (stamp, references, activity log) with actor `app:square`.
+- Settings: secrets `SQUARE_WEBHOOK_SIGNATURE_KEY`, `SQUARE_ACCESS_TOKEN` (owner sets with `wrangler secret put`); var `SQUARE_WEBHOOK_URL` (the exact URL registered in Square); optional `SQUARE_API_BASE`.
+
 ### activity_log
-Every create, update and delete writes one row: `entity_type`, `entity_id`, `action` (`created` / `updated` / `deleted`), `detail` (JSON of the changed fields), `actor` (`master`, `user:<email>` or `app:<name>`), `created_at`.
+Every create, update and delete writes one row: `entity_type`, `entity_id`, `action` (`created` / `updated` / `deleted`), `detail` (JSON of the changed fields), `actor` (`master`, `user:<email>` or `app:<name>`; Square sync writes as `app:square`), `created_at`.
 
 ### Reserved tables
-`payments` and `portal_links` exist in the live database (added for the planned Square payment status and client portal). Nothing reads or writes them yet. Migrations keep them; the API does not expose them.
+`portal_links` exists in the live database (added for the planned client portal). Nothing reads or writes it yet; the API does not expose it. (`payments` was reserved too until migration 0004 made it the invoices table.)
 
 ## Console (`public/index.html`)
 

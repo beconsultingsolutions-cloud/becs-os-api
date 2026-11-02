@@ -70,7 +70,7 @@ describe('migrating the live database', () => {
   it('applies every migration in order and records them', async () => {
     await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
     const done = await all<{ name: string }>('SELECT name FROM d1_migrations ORDER BY id');
-    expect(done.map((m) => m.name)).toEqual(['0001_baseline.sql', '0002_revamp.sql', '0003_milestones_client_log.sql']);
+    expect(done.map((m) => m.name)).toEqual(['0001_baseline.sql', '0002_revamp.sql', '0003_milestones_client_log.sql', '0004_invoices.sql']);
   });
 
   it('0003 adds milestones, the client log and tasks.milestone_id without touching existing rows', async () => {
@@ -89,9 +89,13 @@ describe('migrating the live database', () => {
     const before: Record<string, unknown[]> = {};
     for (const t of ['ventures', 'clients', 'tasks', 'payments', 'portal_links']) before[t] = await all(`SELECT * FROM ${t} ORDER BY 1`);
     await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
-    // 0003 adds tasks.milestone_id, which existing tasks get as empty; everything else is unchanged.
+    // 0003 adds tasks.milestone_id, which existing tasks get as empty. 0004 rebuilds payments with
+    // new empty columns and updated_at = created_at. Everything else is unchanged.
     for (const t of Object.keys(before)) {
-      const expected = t === 'tasks' ? before[t].map((r) => ({ ...(r as object), milestone_id: null })) : before[t];
+      const expected =
+        t === 'tasks' ? before[t].map((r) => ({ ...(r as object), milestone_id: null }))
+        : t === 'payments' ? before[t].map((r) => ({ ...(r as object), milestone_id: null, sent_on: null, notes: null, updated_at: (r as { created_at: string }).created_at }))
+        : before[t];
       expect(await all(`SELECT * FROM ${t} ORDER BY 1`), t).toEqual(expected);
     }
     expect((await all<{ id: number }>('SELECT id FROM projects ORDER BY id')).map((p) => p.id)).toEqual([5, 6, 9, 12, 14]);
@@ -179,7 +183,7 @@ describe('migrating the live database', () => {
     const before = await all('SELECT * FROM projects ORDER BY id');
     await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
     expect(await all('SELECT * FROM projects ORDER BY id')).toEqual(before);
-    expect(await all('SELECT name FROM d1_migrations')).toHaveLength(3);
+    expect(await all('SELECT name FROM d1_migrations')).toHaveLength(4);
   });
 
   it('serves the migrated data through the API, and blocked deletes still count payments', async () => {

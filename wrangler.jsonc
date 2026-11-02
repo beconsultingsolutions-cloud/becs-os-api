@@ -65,6 +65,15 @@
   "vars": {
     "ACCESS_TEAM_DOMAIN": "becs2025.cloudflareaccess.com",
     "ACCESS_AUD": "ea52c3204b0387c7c71a48c153e4dcfdf691942bcb18f19ad8c711984636fb67",
-    "ACCESS_ALLOWED_EMAILS": "beconsultingsolutions@gmail.com"
-  }
+    "ACCESS_ALLOWED_EMAILS": "beconsultingsolutions@gmail.com",
+    // Square sync (src/square.ts). The exact webhook URL registered in Square: it is part of the
+    // signature Square sends, so it must match character for character. Not a secret.
+    // The two secrets are set by the owner only: wrangler secret put SQUARE_WEBHOOK_SIGNATURE_KEY
+    // and wrangler secret put SQUARE_ACCESS_TOKEN. Without them the sync stays off.
+    "SQUARE_WEBHOOK_URL": "https://becs-os.be-consulting-solutions.workers.dev/api/webhooks/square"
+  },
+
+  // Daily Square check at 13:00 UTC (7 AM Central): asks Square about open linked invoices
+  // and fixes anything a missed webhook left behind. Does nothing until SQUARE_ACCESS_TOKEN is set.
+  "triggers": { "crons": ["0 13 * * *"] }
 }

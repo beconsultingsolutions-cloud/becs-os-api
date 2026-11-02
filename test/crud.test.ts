@@ -18,18 +18,18 @@ import {
 } from './helpers';
 
 const one: Record<TableName, string> = {
-  ventures: 'venture', clients: 'client', projects: 'project', tasks: 'task', milestones: 'milestone', client_notes: 'client log entry',
+  ventures: 'venture', clients: 'client', projects: 'project', tasks: 'task', milestones: 'milestone', client_notes: 'client log entry', payments: 'invoice',
 };
 const textField: Record<TableName, string> = {
-  ventures: 'name', clients: 'name', projects: 'name', tasks: 'title', milestones: 'title', client_notes: 'title',
+  ventures: 'name', clients: 'name', projects: 'name', tasks: 'title', milestones: 'title', client_notes: 'title', payments: 'label',
 };
 // The long free-text column of each table.
 const longField: Record<TableName, string> = {
-  ventures: 'description', clients: 'notes', projects: 'notes', tasks: 'notes', milestones: 'notes', client_notes: 'body',
+  ventures: 'description', clients: 'notes', projects: 'notes', tasks: 'notes', milestones: 'notes', client_notes: 'body', payments: 'notes',
 };
 // An enum column to test filters with.
 const enumField: Record<TableName, string> = {
-  ventures: 'status', clients: 'stage', projects: 'status', tasks: 'status', milestones: 'status', client_notes: 'kind',
+  ventures: 'status', clients: 'stage', projects: 'status', tasks: 'status', milestones: 'status', client_notes: 'kind', payments: 'status',
 };
 // A valid new row (milestones and client log entries get a parent project or client made first).
 const fresh = (table: TableName, n = 1) => minimalWithParent(table, n);

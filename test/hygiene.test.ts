@@ -205,15 +205,15 @@ describe('addresses that do not exist', () => {
 
   it('answers 404 for unknown /api paths once signed in, and 401 before', async () => {
     expectErrorShape(await get('/api'), 404, 'not_found');
-    expectErrorShape(await get('/api/payments'), 404, 'not_found');
     expectErrorShape(await get('/api/portal_links'), 404, 'not_found');
     expectErrorShape(await get('/api/activity_log'), 404, 'not_found');
     expectErrorShape(await get('/api/health/x', { key: null }), 401, 'unauthorized');
+    expectErrorShape(await get('/api/portal_links', { key: null }), 401, 'unauthorized');
     expectErrorShape(await get('/api/payments', { key: null }), 401, 'unauthorized');
   });
 
-  it('does not expose the reserved payments and portal_links tables', async () => {
-    expectErrorShape(await post('/api/payments', { project_id: 1, label: 'x' }), 404, 'not_found');
+  it('does not expose the reserved portal_links table (payments became the invoices table in 0004)', async () => {
+    expectErrorShape(await post('/api/portal_links', { client_id: 1 }), 404, 'not_found');
     expectErrorShape(await get('/api/portal_links'), 404, 'not_found');
   });
 });

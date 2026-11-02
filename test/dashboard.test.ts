@@ -85,6 +85,7 @@ describe('dashboard across all ventures', () => {
         'active_projects',
         'client_pipeline',
         'due_soon',
+        'money',
         'open_tasks',
         'open_tasks_by_venture',
         'overdue',
@@ -219,6 +220,10 @@ describe('dashboard for one venture', () => {
       client_pipeline: [],
       active_projects: 0,
       active_project_value_cents: 0,
+      money: {
+        outstanding_count: 0, outstanding_cents: 0, late_count: 0, late_cents: 0,
+        paid_this_month_count: 0, paid_this_month_cents: 0, due_within_14_days: [],
+      },
     });
   });
 

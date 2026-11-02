@@ -126,7 +126,7 @@ describe('GET /api/activity', () => {
   });
 
   for (const [q, field] of [
-    ['entity_type=payments', 'entity_type'],
+    ['entity_type=portal_links', 'entity_type'],
     ['entity_type=activity_log', 'entity_type'],
     ['entity_id=abc', 'entity_id'],
     ['entity_id=0', 'entity_id'],
@@ -306,7 +306,7 @@ describe('app keys only see the activity of tables they can read', () => {
 
   it('still answers 400 for a bad filter from an app key', async () => {
     const key = await makeAppKey(['activity:read']);
-    expectErrorShape(await get('/api/activity?entity_type=payments', { key }), 400, 'invalid');
+    expectErrorShape(await get('/api/activity?entity_type=portal_links', { key }), 400, 'invalid');
   });
 
   it('still lets the master key see every table', async () => {
