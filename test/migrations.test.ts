@@ -70,7 +70,16 @@ describe('migrating the live database', () => {
   it('applies every migration in order and records them', async () => {
     await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
     const done = await all<{ name: string }>('SELECT name FROM d1_migrations ORDER BY id');
-    expect(done.map((m) => m.name)).toEqual(['0001_baseline.sql', '0002_revamp.sql', '0003_milestones_client_log.sql', '0004_invoices.sql']);
+    expect(done.map((m) => m.name)).toEqual(['0001_baseline.sql', '0002_revamp.sql', '0003_intakes.sql', '0003_milestones_client_log.sql', '0004_invoices.sql']);
+  });
+
+  it('0003_intakes adds the intakes table the becs-intake Worker writes to', async () => {
+    await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
+    const cols = (await all<{ name: string }>('PRAGMA table_info(intakes)')).map((c) => c.name);
+    expect(cols).toEqual(['id', 'venture_id', 'client_id', 'form', 'business_name', 'contact_name', 'email', 'phone', 'status', 'answers', 'source_url', 'created_at', 'updated_at']);
+    await env.DB.prepare("INSERT INTO intakes (venture_id, form, answers) VALUES (1, 'business-intake', '{}')").run();
+    expect((await env.DB.prepare('SELECT status FROM intakes').first())?.status).toBe('new');
+    await expect(env.DB.prepare("INSERT INTO intakes (venture_id, form, answers, status) VALUES (1, 'x', '{}', 'maybe')").run()).rejects.toThrow(/CHECK constraint failed/);
   });
 
   it('0003 adds milestones, the client log and tasks.milestone_id without touching existing rows', async () => {
@@ -183,7 +192,7 @@ describe('migrating the live database', () => {
     const before = await all('SELECT * FROM projects ORDER BY id');
     await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
     expect(await all('SELECT * FROM projects ORDER BY id')).toEqual(before);
-    expect(await all('SELECT name FROM d1_migrations')).toHaveLength(4);
+    expect(await all('SELECT name FROM d1_migrations')).toHaveLength(5);
   });
 
   it('serves the migrated data through the API, and blocked deletes still count payments', async () => {

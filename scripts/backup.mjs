@@ -14,7 +14,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const DB = "becs-os-core";
-const TABLES = ["ventures", "clients", "projects", "tasks", "activity_log", "payments", "portal_links", "milestones", "client_notes"];
+const TABLES = ["ventures", "clients", "projects", "tasks", "activity_log", "payments", "portal_links", "milestones", "client_notes", "intakes"];
 const dir = process.argv[2] || join(homedir(), "Documents", "becs-os-backups");
 const stamp = new Date().toLocaleString("sv-SE", { hour12: false }).slice(0, 16).replace(/[: ]/g, (c) => (c === " " ? "-" : ""));
 const file = join(dir, `${DB}-${stamp}.sql`);
