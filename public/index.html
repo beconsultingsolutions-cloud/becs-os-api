@@ -1461,7 +1461,7 @@ function milestoneBlock(milestones, projects) {
    actor ("master", "user:<email>" or "app:<name>"). */
 const ACTIVITY_SHOWN = 12;     // rows shown on the Overview
 const ACTIVITY_FETCH = 50;     // rows fetched, so updates can borrow a name from an earlier row
-const ENTITY = { tasks: 'Task', clients: 'Client', projects: 'Project', ventures: 'Venture', milestones: 'Milestone', client_notes: 'Client log' };
+const ENTITY = { tasks: 'Task', clients: 'Client', projects: 'Project', ventures: 'Venture', milestones: 'Milestone', client_notes: 'Client log', payments: 'Invoice' };
 const VENTURE_STATUSES = [['active', 'Active'], ['paused', 'Paused'], ['archived', 'Archived']];
 const parseDetail = a => {
   if (a.detail && typeof a.detail === 'object') return a.detail;
@@ -1474,7 +1474,13 @@ function changeWords(type, k, v) {
   switch (k) {
     case 'status':
       if (type === 'tasks' || type === 'milestones') return v === 'done' ? 'marked done' : 'status: ' + labelOf(TASK_STATUSES, v);
+      if (type === 'payments') return v === 'paid' ? 'marked paid' : 'status: ' + labelOf(PAY_STATUSES, v);
       return 'status: ' + labelOf(type === 'projects' ? PROJECT_STATUSES : VENTURE_STATUSES, v);
+    case 'amount_cents': return 'amount: ' + money(v || 0);
+    case 'sent_on': return none ? 'sent date cleared' : 'sent ' + fmtDate(v);
+    case 'square_invoice_id': return none ? 'unlinked from Square' : 'linked to Square';
+    case 'milestone_id': return none ? 'milestone removed' : 'milestone changed';
+    case 'label': return 'renamed';
     case 'stage': return 'stage: ' + labelOf(STAGES, v);
     case 'phase': return none ? 'phase cleared' : 'phase: ' + labelOf(PHASES, v);
     case 'priority': return 'priority: ' + prioLabel(v);
@@ -1491,7 +1497,7 @@ function changeWords(type, k, v) {
     default: return k.replace(/_/g, ' ') + ' changed';
   }
 }
-const actorWords = s => !s ? '' : s === 'master' ? 'by master key' : s.startsWith('app:') ? 'by app ' + s.slice(4) : s.startsWith('user:') ? 'by ' + s.slice(5) : 'by ' + s;
+const actorWords = s => !s ? '' : s === 'master' ? 'by master key' : s === 'app:square' ? 'by Square (automatic)' : s.startsWith('app:') ? 'by app ' + s.slice(4) : s.startsWith('user:') ? 'by ' + s.slice(5) : 'by ' + s;
 function activityBlock(rows) {
   if (rows === null) return null;   // no permission: hide quietly
   /* Updates only carry the changed fields, so look for the record's name in other rows (newest first). */
