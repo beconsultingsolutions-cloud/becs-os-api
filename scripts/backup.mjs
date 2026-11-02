@@ -8,13 +8,13 @@
 // Read-only against the live database. Backups hold client data: never commit them.
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const DB = "becs-os-core";
-const TABLES = ["ventures", "clients", "projects", "tasks", "activity_log", "payments", "portal_links"];
+const TABLES = ["ventures", "clients", "projects", "tasks", "activity_log", "payments", "portal_links", "milestones", "client_notes"];
 const dir = process.argv[2] || join(homedir(), "Documents", "becs-os-backups");
 const stamp = new Date().toLocaleString("sv-SE", { hour12: false }).slice(0, 16).replace(/[: ]/g, (c) => (c === " " ? "-" : ""));
 const file = join(dir, `${DB}-${stamp}.sql`);
@@ -42,7 +42,21 @@ if (!/CREATE TABLE/i.test(text)) throw new Error("export has no CREATE TABLE sta
 console.log("2/3 restoring into a throwaway local database");
 const scratch = mkdtempSync(join(tmpdir(), "becs-restore-"));
 try {
-  wrangler("d1", "execute", DB, "--local", "--persist-to", scratch, "--file", file, "--yes");
+  // The export lists tables in creation order, so rows for an older table (tasks) can come
+  // before a newer table it points at (milestones), and SQLite refuses them. For the test
+  // restore, create every table first, then load rows and indexes. The saved export is untouched.
+  const lines = text.split("\n"), creates = [], rest = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (/^CREATE TABLE /i.test(lines[i])) {
+      const block = [];
+      while (i < lines.length) { block.push(lines[i]); if (/;\s*$/.test(lines[i])) break; i++; }
+      creates.push(block.join("\n"));
+    } else rest.push(lines[i]);
+  }
+  const pragmas = rest.filter((l) => /^PRAGMA /i.test(l)), body = rest.filter((l) => !/^PRAGMA /i.test(l));
+  const restoreFile = join(scratch, "restore.sql");
+  writeFileSync(restoreFile, [...pragmas, ...creates, ...body].join("\n"));
+  wrangler("d1", "execute", DB, "--local", "--persist-to", scratch, "--file", restoreFile, "--yes");
 
   console.log("3/3 comparing row counts (live vs restored)");
   const live = counts("--remote"), restored = counts("--local", scratch);
