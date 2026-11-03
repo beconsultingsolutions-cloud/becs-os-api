@@ -11,6 +11,9 @@ export const ORIGIN = 'https://becs.test';
 
 export { TABLE_NAMES, type TableName };
 
+/** Tables the API creates rows in (intakes come only from the becs-intake Worker). */
+export const CREATABLE_TABLES = TABLE_NAMES.filter((t) => TABLES[t].creatable !== false);
+
 export function testEnv(over: Partial<Env> = {}): Env {
   return {
     DB: env.DB,
@@ -119,7 +122,19 @@ export function minimal(table: TableName, n = 1): Record<string, unknown> {
       return { client_id: 1, title: `Note ${n}` };
     case 'payments':
       return { project_id: 1, label: `Invoice ${n}`, amount_cents: 1000 * n };
+    case 'intakes':
+      throw new Error('intakes are not created through the API; use seedIntake()');
   }
+}
+
+/** Inserts an intake the way the becs-intake Worker does (straight into D1). Returns its id. */
+export async function seedIntake(over: Record<string, string | number | null> = {}): Promise<number> {
+  const row = { venture_id: 1, client_id: null, form: 'business-intake', business_name: 'Glow Studio', contact_name: 'Dana', email: 'dana@glow.co', phone: null, answers: '{"goals":"more bookings"}', source_url: null, ...over };
+  const cols = Object.keys(row);
+  const r = await env.DB.prepare(`INSERT INTO intakes (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')}) RETURNING id`)
+    .bind(...Object.values(row))
+    .first<{ id: number }>();
+  return r!.id;
 }
 
 /**

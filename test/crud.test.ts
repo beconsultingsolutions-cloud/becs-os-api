@@ -3,6 +3,7 @@
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import {
+  CREATABLE_TABLES,
   TABLE_NAMES,
   call,
   count,
@@ -29,12 +30,12 @@ const longField: Record<TableName, string> = {
 };
 // An enum column to test filters with.
 const enumField: Record<TableName, string> = {
-  ventures: 'status', clients: 'stage', projects: 'status', tasks: 'status', milestones: 'status', client_notes: 'kind', payments: 'status',
+  ventures: 'status', clients: 'stage', projects: 'status', tasks: 'status', milestones: 'status', client_notes: 'kind', payments: 'status', intakes: 'status',
 };
 // A valid new row (milestones and client log entries get a parent project or client made first).
 const fresh = (table: TableName, n = 1) => minimalWithParent(table, n);
 
-for (const table of TABLE_NAMES) {
+for (const table of CREATABLE_TABLES) {
   describe(`${table}: basic create, read, update, delete`, () => {
     it(`creates a ${one[table]} and answers 201 with the saved row`, async () => {
       const body = await fresh(table);

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ALL_SCOPES,
   MASTER_KEY,
+  CREATABLE_TABLES,
   TABLE_NAMES,
   call,
   create,
@@ -180,7 +181,7 @@ describe('app key scopes, for every table and action', () => {
     }
   }
 
-  for (const table of TABLE_NAMES) {
+  for (const table of CREATABLE_TABLES) {
     for (const { action, scope, okStatus } of actions) {
       const needed = scopeFor(table, scope);
       it(`${table}: ${action} works with only "${needed}"`, async () => {

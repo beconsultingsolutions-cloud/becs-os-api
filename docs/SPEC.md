@@ -108,7 +108,7 @@ Failed sign-ins are limited separately by the binding `AUTH_LIMITER`: 10 failure
 - Paging: lists are ordered by `id`, highest first (ids are never reused, so this is newest first and the same order on every request). Ask for `?limit=500&offset=0`, then `offset=500`, `offset=1000` and so on until a page comes back with fewer rows than the limit. Pages never overlap or skip a row as long as nothing is added or deleted in between; if a row is added between two page requests, the next page can repeat one row, so callers that page should drop duplicate ids.
 - Any non-empty `Authorization` header counts as a key attempt, even if it is not `Bearer`. Tokens longer than 256 characters are refused.
 - API responses carry `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`.
-- A delete is blocked (`409`) while other rows point at the row: a venture's clients, projects and tasks; a client's projects and log entries;
+- A delete is blocked (`409`) while other rows point at the row: a venture's clients, projects, tasks and intakes; a client's projects, log entries and intakes;
   a project's tasks and milestones; a milestone's tasks. Rows in the reserved `payments` and `portal_links` tables also block it.
 - Access tokens: `exp` is checked strictly; `nbf` gets 60 seconds of grace.
 - Admin: creating a key returns `{"data":{"app","scopes","created_at","key"}}`; revoking returns `{"data":{"app","revoked":<count>}}` or `404`. Bad app names or scopes are `400 invalid` with `fields`.
@@ -123,7 +123,7 @@ Failed sign-ins are limited separately by the binding `AUTH_LIMITER`: 10 failure
 | GET | `/api/me` | Who am I. `{"data":{"kind":"master"}}`, `{"data":{"kind":"user","email":"..."}}` or `{"data":{"kind":"app","app":"...","scopes":[...]}}` |
 | GET | `/api/dashboard` | Optional `?venture_id=` and `?today=`. Shape below. |
 | GET | `/api/<table>` | List. Filter by any writable column (`?status=todo&venture_id=1`). `?limit=` 1..500, default 100. `?offset=` rows to skip, default 0 (see "Paging"). Newest first. |
-| POST | `/api/<table>` | Create. Body is a JSON object. Returns the row. |
+| POST | `/api/<table>` | Create. Body is a JSON object. Returns the row. Not for `intakes` (`405`, `Allow: GET`): those come only from the becs-intake Worker. |
 | GET | `/api/<table>/<id>` | One row or `404`. |
 | PATCH | `/api/<table>/<id>` | Partial update. Returns the row, or `404` if it does not exist. |
 | DELETE | `/api/<table>/<id>` | `{"data":{"id":<id>,"deleted":true}}`, `404` if missing, `409` if still referenced. |
@@ -132,7 +132,7 @@ Failed sign-ins are limited separately by the binding `AUTH_LIMITER`: 10 failure
 | POST | `/api/admin/keys` | Body `{"app":"leaa-portal","scopes":["tasks:read"]}`. Returns the raw key once. |
 | DELETE | `/api/admin/keys/<app>` | Revokes every key issued to that app. |
 
-`<table>` is one of `ventures`, `clients`, `projects`, `tasks`, `milestones`, `client_notes`, `payments` (invoices).
+`<table>` is one of `ventures`, `clients`, `projects`, `tasks`, `milestones`, `client_notes`, `payments` (invoices), `intakes`.
 
 ### Dashboard shape
 
@@ -152,6 +152,10 @@ Failed sign-ins are limited separately by the binding `AUTH_LIMITER`: 10 failure
     "late_count": 1, "late_cents": 280000,
     "paid_this_month_count": 1, "paid_this_month_cents": 280000,
     "due_within_14_days": [{"id":4,"label":"Balance at launch","amount_cents":280000,"status":"sent","due_date":"2026-11-13","project_id":10,"project_name":"..."}]
+  },
+  "intakes": {
+    "new_count": 2,
+    "newest": [{"id":7,"form":"business-intake","business_name":"...","contact_name":"...","email":"...","client_id":21,"venture_id":1,"created_at":"2026-11-02 23:10:00"}]
   }
 }}
 ```
@@ -166,6 +170,7 @@ Failed sign-ins are limited separately by the binding `AUTH_LIMITER`: 10 failure
   The value is added up with SQLite `TOTAL()` and cast back to whole cents, so no stored data can make it fail.
 - With `?venture_id=`, every figure is limited to that venture (`open_tasks_by_venture` then has one row).
 - `money`: invoices. Open = `unpaid`, `sent` or `partial`. `outstanding_*` = all open; `late_*` = open with `due_date` before today; `paid_this_month_*` = `paid` with `paid_at` on or after the 1st of today's month; `due_within_14_days` = open with a due date up to today + 14 days (late ones included), soonest first, max 25. Invoices have no venture of their own: `?venture_id=` filters them through their project.
+- `intakes`: `new_count` = intakes with status `new`; `newest` = the 10 newest of those. Follows `?venture_id=`.
 
 ## Data model
 
@@ -255,6 +260,15 @@ One row per payment due on a project. Called "Invoices" in the console. Guarded 
 | `notes` | optional, up to 5000 chars |
 | `paid_at` | set by the server: stamped when status becomes `paid`, cleared when it leaves `paid`. Not writable. |
 
+### intakes
+Public form submissions, written straight into D1 by the separate **becs-intake** Worker (repo `becs-intake`, contract in its `HANDOFF.md`): one intake, a lead client (reused by email) and a "Review intake" task per submission, logged as `app:becs-intake`. The API never creates intakes. Guarded by the `clients` scopes. Table from `migrations/0003_intakes.sql`.
+| Column | Rule |
+|---|---|
+| `venture_id` | required, must exist. Writable (move an intake to another venture). |
+| `client_id` | optional, must exist. Writable (link the lead). |
+| `status` | `new` (default), `reviewed`, `call_booked`, `proposal_sent`, `closed`. Writable. |
+| `form`, `business_name`, `contact_name`, `email`, `phone`, `answers` (JSON text), `source_url` | the visitor's own submission. Read-only: ignored if sent. |
+
 `id`, `created_at`, `updated_at` are set by the server on every table and are not writable.
 
 ### Square sync
@@ -276,7 +290,8 @@ Every create, update and delete writes one row: `entity_type`, `entity_id`, `act
 - On load it calls `GET /api/me` with the browser's cookies. `200` means signed in through Access.
   `401` shows a key box as a fallback; the key is kept in `sessionStorage` for that tab only and sent as a Bearer header.
 - No demo data. If the API cannot be reached the console says so.
-- Screens: Overview, Clients, Projects, Tasks, Keys (Keys only for `master` and `user`).
+- Screens: Overview, Intakes, Clients, Projects, Tasks, Money, Tools and Keys (Tools and Keys only for `master` and `user`).
+- Intakes: filter New / In progress / Closed / All; change status inline; open one to read the answers (shown as text only), link the lead or move the venture; delete (for spam and tests). The Overview shows a New intakes tile and the newest new intakes.
 - A venture switcher (All ventures, or one) filters every screen.
 - Create, edit and delete on clients, projects and tasks.
 - The Plan / Evolve / Succeed strip shows only on projects that have a `phase`; the phase field is offered only when the project's venture slug is `becs`.

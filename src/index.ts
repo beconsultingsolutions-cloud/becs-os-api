@@ -548,7 +548,7 @@ async function tableRoute(
   table: TableName,
   idPart: string | undefined
 ): Promise<Response> {
-  const allowed = idPart === undefined ? 'GET,POST' : 'GET,PATCH,DELETE';
+  const allowed = idPart === undefined ? (TABLES[table].creatable === false ? 'GET' : 'GET,POST') : 'GET,PATCH,DELETE';
   if (!allowed.split(',').includes(req.method)) return methodNotAllowed(allowed);
 
   const scope = `${TABLES[table].scope}:${req.method === 'GET' ? 'read' : 'write'}`;
@@ -667,6 +667,16 @@ async function dashboard(env: Env, url: URL): Promise<Response> {
   ]);
   const money = (r: D1Result) => r.results[0] as { n: number; cents: number };
 
+  // Intakes waiting for the owner (status 'new'), newest first.
+  const [newIntakes, newIntakeList] = await env.DB.batch([
+    prep("SELECT COUNT(*) AS n FROM intakes WHERE status = 'new'" + and),
+    prep(
+      "SELECT id, form, business_name, contact_name, email, client_id, venture_id, created_at FROM intakes WHERE status = 'new'" +
+        and +
+        ' ORDER BY id DESC LIMIT 10'
+    ),
+  ]);
+
   const proj = projects.results[0] as { n: number; cents: number };
   return ok({
     open_tasks: (open.results[0] as { n: number }).n,
@@ -686,6 +696,10 @@ async function dashboard(env: Env, url: URL): Promise<Response> {
       paid_this_month_count: money(paidMonth).n,
       paid_this_month_cents: money(paidMonth).cents,
       due_within_14_days: dueSoonPay.results, // includes late ones; at most 25
+    },
+    intakes: {
+      new_count: (newIntakes.results[0] as { n: number }).n,
+      newest: newIntakeList.results, // status 'new', at most 10
     },
   });
 }

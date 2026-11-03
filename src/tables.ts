@@ -5,8 +5,8 @@
 // unknown field) are ignored when sent.
 // To add a table: add it here (with its permission group), add a migration, and add tests.
 
-export type TableName = 'ventures' | 'clients' | 'projects' | 'tasks' | 'milestones' | 'client_notes' | 'payments';
-export const TABLE_NAMES: TableName[] = ['ventures', 'clients', 'projects', 'tasks', 'milestones', 'client_notes', 'payments'];
+export type TableName = 'ventures' | 'clients' | 'projects' | 'tasks' | 'milestones' | 'client_notes' | 'payments' | 'intakes';
+export const TABLE_NAMES: TableName[] = ['ventures', 'clients', 'projects', 'tasks', 'milestones', 'client_notes', 'payments', 'intakes'];
 
 // App-key permissions come in these four groups ("<group>:read" / "<group>:write").
 // Every table belongs to one group, so new tables need no new scopes or keys.
@@ -20,6 +20,9 @@ export const NOTE_KINDS = ['note', 'call', 'meeting', 'email', 'decision', 'link
 export const PAYMENT_STATUSES = ['unpaid', 'sent', 'partial', 'paid', 'void'] as const;
 // Statuses that still count as money owed.
 export const PAYMENT_OPEN = ['unpaid', 'sent', 'partial'] as const;
+
+// Where an intake (a public form submission) stands. Matches the CHECK in migrations/0003_intakes.sql.
+export const INTAKE_STATUSES = ['new', 'reviewed', 'call_booked', 'proposal_sent', 'closed'] as const;
 
 // One rule per column. "required" means it must be present (and not empty) on create
 // and can never be set to empty later.
@@ -52,6 +55,8 @@ export interface TableDef {
   // A server-managed time stamp: set when status becomes `status`, cleared when it leaves it
   // (tasks and milestones: done -> completed_at; invoices: paid -> paid_at).
   stamp?: { status: string; column: string };
+  // false = rows come from outside the API (intakes: the becs-intake Worker), so POST is refused.
+  creatable?: false;
   children: Child[];
 }
 
@@ -73,6 +78,7 @@ export const TABLES: Record<TableName, TableDef> = {
       { table: 'clients', column: 'venture_id', one: 'client', many: 'clients' },
       { table: 'projects', column: 'venture_id', one: 'project', many: 'projects' },
       { table: 'tasks', column: 'venture_id', one: 'task', many: 'tasks' },
+      { table: 'intakes', column: 'venture_id', one: 'intake', many: 'intakes' },
     ],
   },
   clients: {
@@ -92,6 +98,7 @@ export const TABLES: Record<TableName, TableDef> = {
     children: [
       { table: 'projects', column: 'client_id', one: 'project', many: 'projects' },
       { table: 'client_notes', column: 'client_id', one: 'client log entry', many: 'client log entries' },
+      { table: 'intakes', column: 'client_id', one: 'intake', many: 'intakes' },
       // Reserved table (client portal). The API does not expose it, but a row there still blocks a delete.
       { table: 'portal_links', column: 'client_id', one: 'client portal link', many: 'client portal links' },
     ],
@@ -190,6 +197,22 @@ export const TABLES: Record<TableName, TableDef> = {
       square_url: { type: 'url', max: 500 },
       square_invoice_id: { type: 'text', max: 100 },
       notes: NOTES,
+    },
+    children: [],
+  },
+  // Public form submissions, written by the separate becs-intake Worker (contract: its HANDOFF.md).
+  // The API never creates them; the owner moves status along, links a client or moves the venture.
+  // The visitor's own answers (form, names, email, phone, answers, source_url) are read-only.
+  // Guarded by client permissions (intakes are leads).
+  intakes: {
+    one: 'intake',
+    scope: 'clients',
+    hasUpdatedAt: true,
+    creatable: false,
+    fields: {
+      venture_id: { type: 'ref', table: 'ventures', required: true },
+      client_id: { type: 'ref', table: 'clients' },
+      status: { type: 'enum', values: INTAKE_STATUSES },
     },
     children: [],
   },

@@ -348,6 +348,11 @@ dialog::backdrop{background:rgba(45,42,95,.45);-webkit-backdrop-filter:blur(3px)
 .dfoot{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;border-top:1px solid var(--border);padding:14px 0 max(14px,env(safe-area-inset-bottom));position:sticky;bottom:0;z-index:1;background:var(--card)}
 .dfoot .right{display:flex;gap:10px;margin-left:auto;flex-wrap:wrap}
 .stamp{font-family:var(--mono);font-size:.72rem;color:var(--ink-soft)}
+.intake-view{margin:4px 0 14px}
+.answers{display:grid;grid-template-columns:minmax(110px,36%) 1fr;gap:8px 16px;margin:10px 0 0;max-height:44vh;overflow:auto;padding:14px;border:1px solid var(--line);border-radius:8px;background:var(--cream)}
+.answers dt{font-weight:600;color:var(--ink-soft);font-size:.85rem}
+.answers dd{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+@media (max-width:560px){.answers{grid-template-columns:1fr}.answers dd{margin-bottom:6px}}
 
 /* ---------- toast ---------- */
 #toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(16px);max-width:calc(100vw - 32px);background:var(--navy);color:var(--cream);padding:11px 18px;border-radius:8px;border-left:6px solid var(--lime);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:50;font-weight:500}
@@ -404,6 +409,7 @@ dialog::backdrop{background:rgba(45,42,95,.45);-webkit-backdrop-filter:blur(3px)
   <symbol id="i-tasks" viewBox="0 0 24 24"><path d="M4 4l2 2 3-3.5M4 11l2 2 3-3.5M4 18l2 2 3-3.5"/><path d="M13 5h8M13 12h8M13 19h8"/></symbol>
   <symbol id="i-keys" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M10.8 12.2 20 3M17 6l3 3M14.5 8.5l2 2"/></symbol>
   <symbol id="i-tools" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 17.5h7M17.5 14v7"/></symbol>
+  <symbol id="i-intakes" viewBox="0 0 24 24"><path d="M3 13l2.5-7.5h13L21 13v5.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/><path d="M3 13h5l1.5 2.5h5L16 13h5"/></symbol>
   <symbol id="i-money" viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9.5v5M18 9.5v5"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></symbol>
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
@@ -447,6 +453,7 @@ dialog::backdrop{background:rgba(45,42,95,.45);-webkit-backdrop-filter:blur(3px)
     </a>
     <nav class="nav" id="nav" aria-label="Sections">
       <a href="#/overview" data-r="overview"><svg class="ico" aria-hidden="true"><use href="#i-overview"/></svg>Overview</a>
+      <a href="#/intakes" data-r="intakes"><svg class="ico" aria-hidden="true"><use href="#i-intakes"/></svg>Intakes</a>
       <a href="#/clients" data-r="clients"><svg class="ico" aria-hidden="true"><use href="#i-clients"/></svg>Clients</a>
       <a href="#/projects" data-r="projects"><svg class="ico" aria-hidden="true"><use href="#i-projects"/></svg>Projects</a>
       <a href="#/tasks" data-r="tasks"><svg class="ico" aria-hidden="true"><use href="#i-tasks"/></svg>Tasks</a>
@@ -941,11 +948,12 @@ async function related(table, ventureId) {
    fields: [{ name, label, kind, required, max, options, hint, full,
               showIf(values), hiddenValue(values), relatedTo }]
    kind: text | email | tel | textarea | date | money | select | venture | related
+   before: optional read-only content shown above the fields (an intake's answers).
    - On create, empty optional fields are left out.
    - On edit, only fields that changed are sent (PATCH).
    - Server "fields" errors are shown under the matching input.
    ===================================================================== */
-function formDialog({ eyebrow, title, fields, row, preset = {}, submitLabel, onSubmit, onDelete, stamp }) {
+function formDialog({ eyebrow, title, fields, row, preset = {}, submitLabel, onSubmit, onDelete, stamp, before }) {
   const dlg = $('#dlg');
   const inputs = {}, wraps = {}, errs = {};
   const general = h('div', { class: 'derr', role: 'alert' });
@@ -1051,7 +1059,7 @@ function formDialog({ eyebrow, title, fields, row, preset = {}, submitLabel, onS
   const del = onDelete ? h('button', { class: 'btn danger', type: 'button' }, 'Delete') : null;
   const form = h('form', { class: 'dform', novalidate: true },
     h('div', { class: 'dhead' }, h('div', {}, h('div', { class: 'eyebrow' }, eyebrow), h('h2', { class: 'h2', id: 'dlgTitle', tabindex: '-1', style: 'margin-top:4px;outline:none' }, title), h('div', { class: 'lime-rule' }))),
-    grid, general,
+    before || null, grid, general,
     stamp ? h('div', { class: 'stamp' }, stamp) : null,
     h('div', { class: 'dfoot' }, del, h('div', { class: 'right' }, cancel, save)));
 
@@ -1309,12 +1317,66 @@ function paymentForm(row, preset = {}, projects = null) {
   });
 }
 
+/* ---------- Intakes (public form submissions, written by the becs-intake Worker) ---------- */
+/* The API never creates intakes. The owner reads the answers, moves the status along,
+   links the lead (client) or moves it to another venture. The answers are the public's
+   own words: shown as text only, never edited. */
+const INTAKE_STATUSES = [['new', 'New'], ['reviewed', 'Reviewed'], ['call_booked', 'Call booked'], ['proposal_sent', 'Proposal sent'], ['closed', 'Closed']];
+const INTAKE_OPEN = ['reviewed', 'call_booked', 'proposal_sent'];
+const FORM_LABELS = { 'business-intake': 'Business intake', 'brand-intake-beauty-wellness': 'Beauty & wellness' };
+const formLabel = f => FORM_LABELS[f] || f || 'Intake';
+const intakeName = x => x.business_name || x.contact_name || 'Intake #' + x.id;
+const INTAKE_HIDDEN = new Set(['form', 'source_url', 'website_url', '_gotcha', 'bot-field', 'company_url']);
+function intakeAnswers(x) {
+  let a = {};
+  try { const p = JSON.parse(x.answers || '{}'); if (p && typeof p === 'object' && !Array.isArray(p)) a = p; } catch { /* unreadable: show none */ }
+  return Object.entries(a)
+    .filter(([k, v]) => !INTAKE_HIDDEN.has(k) && v != null && String(v).trim() !== '')
+    .map(([k, v]) => [k.replace(/_/g, ' ').replace(/^./, c => c.toUpperCase()), Array.isArray(v) ? v.join(', ') : typeof v === 'object' ? JSON.stringify(v) : String(v)]);
+}
+function intakeForm(row) {
+  const answers = intakeAnswers(row);
+  const contact = [row.contact_name, row.email, row.phone].filter(Boolean).join(' \u00b7 ');
+  const before = h('div', { class: 'intake-view' },
+    h('div', { class: 'meta' }, [formLabel(row.form), 'received ' + timeAgo(row.created_at), row.source_url ? short(row.source_url, 70) : ''].filter(Boolean).join(' \u00b7 ')),
+    contact ? h('p', { class: 'small', style: 'margin:8px 0 0' }, h('b', {}, 'Contact: '), contact) : null,
+    answers.length ? h('dl', { class: 'answers', 'aria-label': 'Answers' }, answers.map(([k, v]) => [h('dt', {}, k), h('dd', {}, v)]))
+      : h('p', { class: 'meta', style: 'margin-top:8px' }, 'No answers beyond the contact details.'));
+  formDialog({
+    eyebrow: 'Intake \u00b7 ' + formLabel(row.form), title: intakeName(row), row, before, stamp: stampOf(row),
+    submitLabel: 'Save changes',
+    fields: [
+      { name: 'status', label: 'Status', kind: 'select', options: INTAKE_STATUSES, focus: true },
+      { name: 'venture_id', label: 'Venture', kind: 'venture', required: true },
+      { name: 'client_id', label: 'Lead (client)', kind: 'related', relatedTo: 'venture_id', none: 'No client linked', options: v => related('clients', v.venture_id) }
+    ],
+    onSubmit: body => write('PATCH', `/intakes/${row.id}`, body, 'Intake saved.', null, false),
+    onDelete: can('clients:write') ? {
+      confirm: { title: 'Delete intake?', body: `The submission from "${intakeName(row)}" will be removed for good. Use this for spam or tests. To finish with a real lead, set the status to Closed instead.` },
+      run: () => write('DELETE', `/intakes/${row.id}`, undefined, 'Intake deleted.', null, false)
+    } : null
+  });
+}
+/* New intakes on the Overview (from the dashboard's intakes.newest). */
+function intakeBlock(x) {
+  if (!x) return null;   // older API or no permission: hide quietly
+  const rows = x.newest || [];
+  return h('section', { class: 'block' }, h('h2', { class: 'h2' }, 'New intakes', h('span', { class: 'mono' }, String(x.new_count || 0))),
+    h('div', { class: 'panel' }, rows.length
+      ? [h('ul', { class: 'rows' }, rows.map(r => h('li', {}, h('div', { class: 'grow' },
+          h('button', { class: 'linkbtn', type: 'button', 'data-fk': 'oi-' + r.id, onclick: e => editById('intakes', r.id, e.currentTarget) }, intakeName(r)),
+          h('div', { class: 'tmeta' }, h('span', { class: 'pill tag' }, formLabel(r.form)), ventTag(r.venture_id), h('span', {}, timeAgo(r.created_at))))))),
+        (x.new_count || 0) > rows.length ? h('div', { class: 'more' }, h('span', {}, `Showing the newest ${rows.length} of ${x.new_count}.`),
+          h('a', { class: 'btn sm', href: '#/intakes', onclick: () => { intakesScreen.filter = 'new'; } }, 'See all in Intakes', icon('next'))) : null]
+      : h('div', { class: 'empty' }, h('b', {}, 'No new intakes.'), ' Submissions from the public forms show up here.')));
+}
+
 /* Open an edit form for a record we only have an id for (fetches it fresh). */
 async function editById(table, id, control) {
   if (control) control.disabled = true;
   try {
     const row = await api('GET', `/${table}/${id}`);
-    ({ clients: clientForm, projects: projectForm, tasks: taskForm, milestones: milestoneForm, client_notes: noteForm, payments: paymentForm })[table](row);
+    ({ clients: clientForm, projects: projectForm, tasks: taskForm, milestones: milestoneForm, client_notes: noteForm, payments: paymentForm, intakes: intakeForm })[table](row);
   } catch (e) { if (e.status !== 401) toast(e.message, true); }
   finally { if (control && control.isConnected) control.disabled = false; }
 }
@@ -1389,11 +1451,11 @@ const overview = {
       const lateN = d.overdue_count ?? late.length, soonN = d.due_soon_count ?? soon.length;
       const stat = (label, n, sub, alert) => h('div', { class: 'stat' + (alert ? ' alert' : '') }, h('span', { class: 'l' }, label), h('span', { class: 'n' }, String(n)), sub ? h('span', { class: 's' }, sub) : null);
       parts.push(h('div', { class: 'stats' + (overview.animated ? '' : ' anim'), role: 'group', 'aria-label': 'Key figures' },
+        d.intakes ? stat('New intakes', d.intakes.new_count, d.intakes.new_count ? 'waiting for you' : 'all caught up', d.intakes.new_count > 0) : null,
         stat('Open tasks', d.open_tasks ?? 0),
         stat('Overdue', lateN, null, lateN > 0),
         stat('Due in 7 days', soonN),
-        stat('Active projects', d.active_projects ?? 0, 'planning + active'),
-        stat('Active value', moneyShort(d.active_project_value_cents), money(d.active_project_value_cents || 0)),
+        stat('Active projects', d.active_projects ?? 0, (d.active_project_value_cents ? money(d.active_project_value_cents) + ' in play' : 'planning + active')),
         d.money ? stat('Owed', moneyShort(d.money.outstanding_cents), d.money.late_count ? `${d.money.late_count} late · ${money(d.money.late_cents)}` : `${d.money.outstanding_count} open invoice${d.money.outstanding_count === 1 ? '' : 's'}`, d.money.late_count > 0) : null));
 
       const dashRow = t => h('li', { class: t.status === 'done' ? 'is-done' : null },
@@ -1426,6 +1488,7 @@ const overview = {
             list(soon, soonN, 'soonest', 'Nothing due this week.', ' Add due dates to tasks to see them here.')),
           milestoneBlock(milestones, projects)),
         h('div', {},
+          intakeBlock(d.intakes),
           h('section', { class: 'block' }, h('h2', { class: 'h2' }, 'Client pipeline'),
             h('div', { class: 'panel' }, h('ul', { class: 'bars' }, stages.map(([k, l, n]) => h('li', {},
               h('a', { href: '#/clients', onclick: () => { clientsScreen.stage = k; } },
@@ -1461,7 +1524,7 @@ function milestoneBlock(milestones, projects) {
    actor ("master", "user:<email>" or "app:<name>"). */
 const ACTIVITY_SHOWN = 12;     // rows shown on the Overview
 const ACTIVITY_FETCH = 50;     // rows fetched, so updates can borrow a name from an earlier row
-const ENTITY = { tasks: 'Task', clients: 'Client', projects: 'Project', ventures: 'Venture', milestones: 'Milestone', client_notes: 'Client log', payments: 'Invoice' };
+const ENTITY = { tasks: 'Task', clients: 'Client', projects: 'Project', ventures: 'Venture', milestones: 'Milestone', client_notes: 'Client log', payments: 'Invoice', intakes: 'Intake' };
 const VENTURE_STATUSES = [['active', 'Active'], ['paused', 'Paused'], ['archived', 'Archived']];
 const parseDetail = a => {
   if (a.detail && typeof a.detail === 'object') return a.detail;
@@ -1475,6 +1538,7 @@ function changeWords(type, k, v) {
     case 'status':
       if (type === 'tasks' || type === 'milestones') return v === 'done' ? 'marked done' : 'status: ' + labelOf(TASK_STATUSES, v);
       if (type === 'payments') return v === 'paid' ? 'marked paid' : 'status: ' + labelOf(PAY_STATUSES, v);
+      if (type === 'intakes') return 'status: ' + labelOf(INTAKE_STATUSES, v);
       return 'status: ' + labelOf(type === 'projects' ? PROJECT_STATUSES : VENTURE_STATUSES, v);
     case 'amount_cents': return 'amount: ' + money(v || 0);
     case 'sent_on': return none ? 'sent date cleared' : 'sent ' + fmtDate(v);
@@ -1497,13 +1561,13 @@ function changeWords(type, k, v) {
     default: return k.replace(/_/g, ' ') + ' changed';
   }
 }
-const actorWords = s => !s ? '' : s === 'master' ? 'by master key' : s === 'app:square' ? 'by Square (automatic)' : s.startsWith('app:') ? 'by app ' + s.slice(4) : s.startsWith('user:') ? 'by ' + s.slice(5) : 'by ' + s;
+const actorWords = s => !s ? '' : s === 'master' ? 'by master key' : s === 'app:square' ? 'by Square (automatic)' : s === 'app:becs-intake' ? 'from the intake form' : s.startsWith('app:') ? 'by app ' + s.slice(4) : s.startsWith('user:') ? 'by ' + s.slice(5) : 'by ' + s;
 function activityBlock(rows) {
   if (rows === null) return null;   // no permission: hide quietly
   /* Updates only carry the changed fields, so look for the record's name in other rows (newest first). */
   const names = new Map();
   for (const a of rows) {
-    const d = parseDetail(a), n = d.title || d.name, k = a.entity_type + ':' + a.entity_id;
+    const d = parseDetail(a), n = d.title || d.name || d.business_name, k = a.entity_type + ':' + a.entity_id;
     if (n && !names.has(k)) names.set(k, String(n));
   }
   const item = a => {
@@ -1966,6 +2030,43 @@ const moneyScreen = {
   }
 };
 
+/* ---------- 9e2 Intakes: what came in through the public forms ---------- */
+const intakesScreen = {
+  title: 'Intakes', filter: 'new',
+  async load() {
+    const v = ventureParam();
+    const [intakes, clients] = await Promise.all([needAll('/intakes', v), maybeAll('/clients', v, 'clients:read')]);
+    return { intakes, clients };
+  },
+  draw(data) {
+    const me = intakesScreen, writable = can('clients:write');
+    const all = data.intakes;
+    const cname = id => ((data.clients || []).find(c => c.id === id) || {}).name;
+    const count = st => all.filter(x => x.status === st).length;
+    const FILTERS = [['new', 'New', count('new')], ['open', 'In progress', all.filter(x => INTAKE_OPEN.includes(x.status)).length], ['closed', 'Closed', count('closed')], ['all', 'All', all.length]];
+    const rows = all.filter(x => me.filter === 'all' || (me.filter === 'open' ? INTAKE_OPEN.includes(x.status) : x.status === me.filter));
+    const tr = x => h('tr', {},
+      h('td', {}, h('button', { class: 'linkbtn name', type: 'button', 'data-fk': 'in-' + x.id, onclick: () => intakeForm(x) }, intakeName(x)),
+        h('div', { class: 'tmeta' }, h('span', { class: 'pill tag' }, formLabel(x.form)), x.business_name && x.contact_name ? h('span', {}, x.contact_name) : null, ventTag(x.venture_id))),
+      h('td', { 'data-label': 'Contact' }, [x.email, x.phone].filter(Boolean).join(' \u00b7 ') || '\u2014'),
+      h('td', { 'data-label': 'Received', class: 'nowrap' }, timeAgo(x.created_at)),
+      h('td', { 'data-label': 'Status' }, inlineSelect(INTAKE_STATUSES, x.status, 'Status for ' + intakeName(x),
+        (val, sel) => quiet(write('PATCH', `/intakes/${x.id}`, { status: val }, 'Intake: ' + labelOf(INTAKE_STATUSES, val) + '.', sel)), 'ist-' + x.id, writable)),
+      h('td', { class: 'r' }, h('div', { class: 'cell-actions' },
+        x.client_id ? h('button', { class: 'btn sm', type: 'button', title: 'Open the lead', 'data-fk': 'il-' + x.id, onclick: e => editById('clients', x.client_id, e.currentTarget) }, cname(x.client_id) ? 'Lead' : 'Lead #' + x.client_id) : null,
+        h('button', { class: 'btn sm', type: 'button', onclick: () => intakeForm(x) }, writable ? 'Open' : 'View'))));
+    return [
+      shead('BECS OS \u00b7 Intakes \u00b7 ' + scopeLabel(), 'Intakes', 'Everything sent in through the public intake forms. Each new one already has a lead and a "Review intake" task. Read the answers, then move it along.'),
+      h('div', { class: 'filters' },
+        h('div', { class: 'f wide' }, h('span', {}, 'Show'), h('div', { class: 'seg', role: 'group', 'aria-label': 'Filter intakes' }, FILTERS.map(([k, l, n]) =>
+          h('button', { type: 'button', 'aria-pressed': String(me.filter === k), 'data-fk': 'if-' + k, onclick: () => { me.filter = k; redraw(); } }, l, h('span', { class: 'c' }, String(n))))))),
+      h('div', { class: 'panel' }, rows.length
+        ? h('table', { class: 'tbl' }, h('thead', {}, h('tr', {}, ['Intake', 'Contact', 'Received', 'Status', ''].map(x => h('th', { scope: 'col' }, x || h('span', { class: 'sr' }, 'Actions'))))), h('tbody', {}, rows.map(tr)))
+        : h('div', { class: 'empty' }, h('b', {}, all.length ? 'No intakes match.' : 'No intakes yet.'), all.length ? 'Try another filter.' : 'Submissions from the public intake forms will show up here.'))
+    ];
+  }
+};
+
 /* ---------- 9f Tools (owner only): every BECS tool in one launcher ---------- */
 /* The list lives in public/tools.json (served behind Access like this page). Add a tool there. */
 let toolsQuery = '';
@@ -2010,7 +2111,7 @@ const toolsScreen = {
 /* =====================================================================
    10  ROUTER AND START-UP
    ===================================================================== */
-const SCREENS = { overview, clients: clientsScreen, projects: projectsScreen, tasks: tasksScreen, money: moneyScreen, tools: toolsScreen, keys: keysScreen };
+const SCREENS = { overview, intakes: intakesScreen, clients: clientsScreen, projects: projectsScreen, tasks: tasksScreen, money: moneyScreen, tools: toolsScreen, keys: keysScreen };
 let renderToken = 0, current = null, cache = null;
 const OWNER_ONLY = new Set(['keys', 'tools']);
 const routeName = () => { const r = location.hash.replace(/^#\/?/, ''); return SCREENS[r] && (!OWNER_ONLY.has(r) || isAdmin()) ? r : 'overview'; };

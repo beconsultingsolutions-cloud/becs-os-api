@@ -91,6 +91,7 @@ describe('dashboard across all ventures', () => {
         'overdue',
         'overdue_count',
         'due_soon_count',
+        'intakes',
       ].sort()
     );
 
@@ -224,6 +225,7 @@ describe('dashboard for one venture', () => {
         outstanding_count: 0, outstanding_cents: 0, late_count: 0, late_cents: 0,
         paid_this_month_count: 0, paid_this_month_cents: 0, due_within_14_days: [],
       },
+      intakes: { new_count: 0, newest: [] },
     });
   });
 
