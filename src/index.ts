@@ -18,6 +18,7 @@ export interface Env {
   API_KEY: string; // master key (Worker secret)
   APP_LIMITER?: RateLimit; // Workers Rate Limiting binding (see wrangler.jsonc)
   AUTH_LIMITER?: RateLimit; // Counts failed sign-ins per caller IP (see wrangler.jsonc)
+  ANALYTICS?: AnalyticsEngineDataset; // Workers Analytics Engine, dataset "becs_os" (see wrangler.jsonc)
   ACCESS_TEAM_DOMAIN?: string; // e.g. "myteam.cloudflareaccess.com". Empty = Access sign-in off.
   ACCESS_AUD?: string; // the Access application's AUD tag. Empty = Access sign-in off.
   ACCESS_ALLOWED_EMAILS?: string; // comma-separated emails allowed to sign in. Empty = Access sign-in off.
