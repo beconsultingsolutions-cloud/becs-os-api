@@ -47,11 +47,19 @@
     }
   ],
 
+  // Workers Analytics Engine: request/usage data points written to the "becs_os" dataset.
+  // Optional in the code (env.ANALYTICS may be missing), so nothing breaks if the dataset is unused.
+  "analytics_engine_datasets": [
+    { "binding": "ANALYTICS", "dataset": "becs_os" }
+  ],
+
   // No versioned preview addresses (<version>-becs-os-api.<subdomain>.workers.dev): they would sit outside the Access application.
   "preview_urls": false,
 
   // Back online 2026-11-02. Offline 2026-11-01 because the "All Workers" Access app had a Bypass
-  // policy; it now uses "Owner only" (Allow, owner email, One-time PIN). /api keeps its own Bypass app.
+  // policy; it now uses "Owner only" (Allow, owner email, One-time PIN). Since 2026-11-05 the only
+  // Bypass is a separate app for /api/webhooks/square and /api/health; the rest of /api is behind
+  // "Owner only" or the Chief of Staff service token (Service Auth), both limited to the owner's IP.
   "workers_dev": true,
 
   // Cloudflare Access sign-in for the console. It is switched off unless ALL THREE are filled in
