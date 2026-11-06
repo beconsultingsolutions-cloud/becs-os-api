@@ -1,0 +1,8 @@
+# Copy this file to .dev.vars (git-ignored) for local development with `npx wrangler dev`.
+# Use a made-up value here. Never put the real master key in either file.
+API_KEY=replace-with-any-long-random-local-test-string
+
+# Optional: to try the Cloudflare Access sign-in locally, set all three of these.
+# ACCESS_TEAM_DOMAIN=myteam.cloudflareaccess.com
+# ACCESS_AUD=paste-the-application-aud-tag-here
+# ACCESS_ALLOWED_EMAILS=you@example.com

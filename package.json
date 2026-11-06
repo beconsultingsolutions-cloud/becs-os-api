@@ -1,0 +1,31 @@
+{
+  "name": "becs-os-api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "db:migrate:local": "wrangler d1 migrations apply becs-os-core --local",
+    "db:migrate:remote": "wrangler d1 migrations apply becs-os-core --remote",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck:test": "tsc --noEmit -p test",
+    "backup": "node scripts/backup.mjs"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.4.7",
+    "@cloudflare/workers-types": "^5.20261002.1",
+    "typescript": "^5.6.0",
+    "vitest": "4.1.12",
+    "wrangler": "4.152.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "workerd@1.20261019.1": true
+  },
+  "overrides": {
+    "undici": "7.30.1",
+    "zod": "4.6.7"
+  }
+}

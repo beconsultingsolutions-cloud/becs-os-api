@@ -1,0 +1,731 @@
+{
+  "updated": "2026-11-02",
+  "note": "Every BECS tool in one list. The console's Tools screen reads this file. Add a tool by adding one line to its group.",
+  "groups": [
+    {
+      "name": "BECS core",
+      "tools": [
+        {
+          "name": "BECS website",
+          "for": "BECS",
+          "host": "Netlify",
+          "url": "https://thebeconsultingsolution.com",
+          "use": "Public site and offer catalog (the Chief of Staff's pricing source)",
+          "access": "public"
+        },
+        {
+          "name": "BE University",
+          "for": "BE University",
+          "host": "Netlify",
+          "url": "https://be-university.netlify.app",
+          "use": "Course platform. Custom address app.thebeconsultingsolution.com has no DNS record (found 2026-11-02)",
+          "access": "public"
+        },
+        {
+          "name": "BECS hub (older)",
+          "for": "BECS",
+          "host": "Netlify",
+          "url": "https://hub.thebeconsultingsolution.com",
+          "use": "Earlier BECS OS screen; becs-os is now home",
+          "access": "public"
+        },
+        {
+          "name": "BECS OS Command Center (Vercel)",
+          "for": "BECS",
+          "host": "Vercel",
+          "url": "https://becs-os-command-center.vercel.app",
+          "use": "Earlier command center build",
+          "access": "login"
+        },
+        {
+          "name": "BECS content hub",
+          "for": "BECS",
+          "host": "Vercel",
+          "url": "https://becs-content-hub.vercel.app",
+          "use": "Content planning",
+          "access": "public"
+        },
+        {
+          "name": "BECS templates",
+          "for": "BECS",
+          "host": "Vercel",
+          "url": "https://becs-templates.vercel.app",
+          "use": "Template library",
+          "access": "public"
+        },
+        {
+          "name": "BE-BLOCKSYS",
+          "for": "BECS",
+          "host": "Lovable",
+          "url": "https://lovable.dev/projects/35a367a8-f96e-4e9f-a580-94d12b88355a",
+          "use": "Security console across apps (editor)",
+          "access": "login"
+        },
+        {
+          "name": "Chief of Staff vault backup",
+          "for": "BECS",
+          "host": "GitHub",
+          "url": "https://github.com/beconsultingsolutions-cloud/chief-of-staff-vault",
+          "use": "Private backup of the Obsidian vault",
+          "access": "login"
+        }
+      ]
+    },
+    {
+      "name": "BECS intake, sales and delivery tools",
+      "tools": [
+        {
+          "name": "Business Intake (live form)",
+          "for": "BECS",
+          "host": "Netlify",
+          "url": "https://becs-business-intake.netlify.app",
+          "use": "Client intake form",
+          "access": "public"
+        },
+        {
+          "name": "Beauty & Wellness Intake",
+          "for": "BECS",
+          "host": "Netlify",
+          "url": "https://becs-beauty-wellness-intake.netlify.app",
+          "use": "Brand intake for beauty and wellness starts",
+          "access": "public"
+        },
+        {
+          "name": "Field Circuit",
+          "for": "BECS",
+          "host": "Netlify",
+          "url": "https://becs-field-circuit.netlify.app",
+          "use": "Field leads and events (PIN)",
+          "access": "login"
+        },
+        {
+          "name": "Career Command builder",
+          "for": "BECS",
+          "host": "Netlify",
+          "url": "https://becs-career-command-builder.netlify.app",
+          "use": "Builds career consoles for career clients",
+          "access": "public"
+        },
+        {
+          "name": "Career builder",
+          "for": "BECS",
+          "host": "Netlify",
+          "url": "https://thecareerbuilderbecs.netlify.app",
+          "use": "Career tool",
+          "access": "login"
+        },
+        {
+          "name": "BECS Business Intake",
+          "for": "BECS",
+          "host": "Claude",
+          "url": "https://claude.ai/artifact/7FoQ4k2jmGsysYxXhXxobh",
+          "use": "Intake (artifact)",
+          "access": "login"
+        },
+        {
+          "name": "BECS Costing System",
+          "for": "BECS",
+          "host": "Claude",
+          "url": "https://claude.ai/artifact/DAgeDhWgGy8sw89c4aUqBb",
+          "use": "Pricing and costing",
+          "access": "login"
+        },
+        {
+          "name": "Field Kit: Service SOP",
+          "for": "BECS",
+          "host": "Claude",
+          "url": "https://claude.ai/artifact/67x2NUSuzTXTKYLMAwPpjo",
+          "use": "Build-stage SOP",
+          "access": "login"
+        },
+        {
+          "name": "Field Kit: Offer & Mockups",
+          "for": "BECS",
+          "host": "Claude",
+          "url": "https://claude.ai/artifact/1GjwgugcSciAzfQeuLE7DS",
+          "use": "Offer and mockups",
+          "access": "login"
+        },
+        {
+          "name": "Systems Audit one-pager",
+          "for": "BECS",
+          "host": "Claude",
+          "url": "https://claude.ai/artifact/FjL2puYnbtLmT9YdyZZsJJ",
+          "use": "Audit offer",
+          "access": "login"
+        },
+        {
+          "name": "Client & Customer Agreements",
+          "for": "BECS",
+          "host": "Claude",
+          "url": "https://claude.ai/artifact/Mh2dwoyT3BKCFNpEha8M1w",
+          "use": "Agreement templates",
+          "access": "login"
+        },
+        {
+          "name": "Pre-Ship Security Pass",
+          "for": "BECS",
+          "host": "Claude",
+          "url": "https://claude.ai/artifact/DBwu9rqN5PyNfCEXb1BLG1",
+          "use": "Security SOP and build tracker",
+          "access": "login"
+        },
+        {
+          "name": "Google Business Profile Build Kit",
+          "for": "BECS",
+          "host": "Claude",
+          "url": "https://claude.ai/artifact/GMQ9yBGvNLWnWN2ZXMyCBz",
+          "use": "GBP setup kit",
+          "access": "login"
+        },
+        {
+          "name": "Case Studies: Website Rebuild",
+          "for": "BECS",
+          "host": "Claude",
+          "url": "https://claude.ai/artifact/N3YwLYPGAnqHhFbYPGi857",
+          "use": "Case studies",
+          "access": "login"
+        }
+      ]
+    },
+    {
+      "name": "Corrado Electric (pilot)",
+      "tools": [
+        {
+          "name": "Project proposal",
+          "for": "Corrado Electric",
+          "host": "Netlify",
+          "url": "https://corradoprojectproposal.netlify.app",
+          "use": "Proposal",
+          "access": "public"
+        },
+        {
+          "name": "Marketing kit",
+          "for": "Corrado Electric",
+          "host": "Netlify",
+          "url": "https://corradoelectricmktingkit.netlify.app",
+          "use": "Marketing kit site",
+          "access": "login"
+        },
+        {
+          "name": "Landing page",
+          "for": "Corrado Electric",
+          "host": "Netlify",
+          "url": "https://carradoelectriclandingpage.netlify.app",
+          "use": "Landing page",
+          "access": "public"
+        },
+        {
+          "name": "Workwear (Workdrobe)",
+          "for": "Corrado Electric",
+          "host": "Netlify",
+          "url": "https://corrado-workdrobe.netlify.app",
+          "use": "Workwear page",
+          "access": "login"
+        },
+        {
+          "name": "Marketing System Handoff",
+          "for": "Corrado Electric",
+          "host": "Claude",
+          "url": "https://claude.ai/artifact/9vyh4mscCzBZdsGzBtFgav",
+          "use": "Handoff",
+          "access": "login"
+        },
+        {
+          "name": "Print Marketing Kit",
+          "for": "Corrado Electric",
+          "host": "Claude",
+          "url": "https://claude.ai/artifact/Et8U5rdBVnxm1YNbs3nqsK",
+          "use": "Print kit",
+          "access": "login"
+        }
+      ]
+    },
+    {
+      "name": "RYZA Exotics",
+      "tools": [
+        {
+          "name": "RYZA Content Hub",
+          "for": "RYZA",
+          "host": "Lovable",
+          "url": "https://lovable.dev/projects/be201d46-0464-41ff-b261-f4a456ce2927",
+          "use": "Marketing operations (editor)",
+          "access": "login"
+        },
+        {
+          "name": "RYZA Inventory App",
+          "for": "RYZA",
+          "host": "Lovable",
+          "url": "https://lovable.dev/projects/872f6908-13a2-404c-93c2-d686ad49f212",
+          "use": "QR inventory and husbandry (editor)",
+          "access": "login"
+        },
+        {
+          "name": "THE ISO-LAB",
+          "for": "RYZA",
+          "host": "Lovable",
+          "url": "https://lovable.dev/projects/4977d48c-80c1-4f37-898b-d52c79bcbf62",
+          "use": "Species, enclosures, training (editor)",
+          "access": "login"
+        },
+        {
+          "name": "RYZA planner",
+          "for": "RYZA",
+          "host": "Netlify",
+          "url": "https://ryza-exotics-planner.netlify.app",
+          "use": "Planner",
+          "access": "public"
+        },
+        {
+          "name": "RYZA finance tracker",
+          "for": "RYZA",
+          "host": "Netlify",
+          "url": "https://ryza-finance-tracker.netlify.app",
+          "use": "Finance",
+          "access": "login"
+        },
+        {
+          "name": "RYZA finance onboarding",
+          "for": "RYZA",
+          "host": "Netlify",
+          "url": "https://ryzafinance-onboarding.netlify.app",
+          "use": "Finance onboarding",
+          "access": "login"
+        },
+        {
+          "name": "How to RYZA PM",
+          "for": "RYZA",
+          "host": "Netlify",
+          "url": "https://howtoryzapm.netlify.app",
+          "use": "Project manager guide",
+          "access": "login"
+        },
+        {
+          "name": "RYZA storefront",
+          "for": "RYZA",
+          "host": "Netlify",
+          "url": "https://ryza-storefront.netlify.app",
+          "use": "Store",
+          "access": "public"
+        },
+        {
+          "name": "RYZA live marketing system",
+          "for": "RYZA",
+          "host": "Netlify",
+          "url": "https://ryzalivemktingsys.netlify.app",
+          "use": "Marketing system",
+          "access": "public"
+        },
+        {
+          "name": "RYZA Operations HQ",
+          "for": "RYZA",
+          "host": "Notion",
+          "url": "https://app.notion.com/p/3929c86eeaa281cdba26f117f8b853c9",
+          "use": "Notion HQ (master prompt page)",
+          "access": "login"
+        }
+      ]
+    },
+    {
+      "name": "Coffee with a Purpose / Pilot Pete's",
+      "tools": [
+        {
+          "name": "CWP Console",
+          "for": "CWP",
+          "host": "Netlify",
+          "url": "https://cwp-console.netlify.app",
+          "use": "Client console (Netlify team login)",
+          "access": "login"
+        },
+        {
+          "name": "Pilot Pete's Hub",
+          "for": "Pilot Pete's",
+          "host": "Lovable",
+          "url": "https://lovable.dev/projects/7c2bacc0-50b0-4f0b-9f66-911f006dbb8b",
+          "use": "Ops, Square, staff PIN (editor)",
+          "access": "login"
+        },
+        {
+          "name": "Peak Reserve",
+          "for": "Pilot Pete's",
+          "host": "Lovable",
+          "url": "https://lovable.dev/projects/b46711c6-bbcc-47e2-b63f-b197207b3b6e",
+          "use": "Pre-order concept, not published (editor)",
+          "access": "login"
+        },
+        {
+          "name": "Coffee shop concept audit",
+          "for": "CWP",
+          "host": "Netlify",
+          "url": "https://coffeeashop-cocncept-becsaudit.netlify.app",
+          "use": "Audit",
+          "access": "login"
+        }
+      ]
+    },
+    {
+      "name": "Subtext",
+      "tools": [
+        {
+          "name": "Subtext OS",
+          "for": "Subtext",
+          "host": "Netlify",
+          "url": "https://becs-subtext-os.netlify.app",
+          "use": "Client console (site password)",
+          "access": "login"
+        },
+        {
+          "name": "Subtext Command Console",
+          "for": "Subtext",
+          "host": "Claude",
+          "url": "https://claude.ai/artifact/HTVcZdXQViitdqRrBSLYH8",
+          "use": "Console (artifact)",
+          "access": "login"
+        },
+        {
+          "name": "Subtext Engagement OS",
+          "for": "Subtext",
+          "host": "Claude",
+          "url": "https://claude.ai/artifact/7YBGfNr65RYhZE5AfpnyP3",
+          "use": "Engagement OS (artifact)",
+          "access": "login"
+        }
+      ]
+    },
+    {
+      "name": "LEAA / BLNKS",
+      "tools": [
+        {
+          "name": "LEAA Portal",
+          "for": "LEAA",
+          "host": "Lovable",
+          "url": "https://lovable.dev/projects/ecdbf0ad-ca85-4aad-a8fe-3dba4bdff6d8",
+          "use": "Client projects and brand assessment (editor)",
+          "access": "login"
+        },
+        {
+          "name": "THE BLNKS PLATFORM",
+          "for": "BLNKS",
+          "host": "Lovable",
+          "url": "https://lovable.dev/projects/f84cfeff-d4e3-467b-bdd0-28d736fa11e7",
+          "use": "Orders, samples, Square (editor)",
+          "access": "login"
+        },
+        {
+          "name": "LEAA website",
+          "for": "LEAA",
+          "host": "Netlify",
+          "url": "https://theleaagency.com",
+          "use": "Public site (Netlify Forms on)",
+          "access": "public"
+        },
+        {
+          "name": "BLNKS by LEA Agency",
+          "for": "BLNKS",
+          "host": "Netlify",
+          "url": "https://blnks-by-lea-agency.netlify.app",
+          "use": "BLNKS site",
+          "access": "login"
+        },
+        {
+          "name": "LEAA Operations Hub",
+          "for": "LEAA",
+          "host": "Notion",
+          "url": "https://app.notion.com/p/3329c86eeaa28111bef5ce31bb3f7c95",
+          "use": "Notion hub",
+          "access": "login"
+        }
+      ]
+    },
+    {
+      "name": "Other clients",
+      "tools": [
+        {
+          "name": "Henry Lane & Associates",
+          "for": "Henry Lane",
+          "host": "Netlify",
+          "url": "https://henry-lane-associates.netlify.app",
+          "use": "Site",
+          "access": "public"
+        },
+        {
+          "name": "Henry Lane (second site)",
+          "for": "Henry Lane",
+          "host": "Netlify",
+          "url": "https://henerylane.netlify.app",
+          "use": "Site",
+          "access": "login"
+        },
+        {
+          "name": "Henry Lane pipeline & intake",
+          "for": "Henry Lane",
+          "host": "Claude",
+          "url": "https://claude.ai/artifact/Gm3mZSDoK8x4g1pRXkCw7W",
+          "use": "Service pipeline (artifact)",
+          "access": "login"
+        },
+        {
+          "name": "THE F&F WORKSHOP",
+          "for": "Found & Forged",
+          "host": "Lovable",
+          "url": "https://lovable.dev/projects/6d6dd8a7-058a-42a4-9316-1fd52e11cb48",
+          "use": "Leather commissions and client portal (editor)",
+          "access": "login"
+        },
+        {
+          "name": "Chaparral sale",
+          "for": "The Boat",
+          "host": "Netlify",
+          "url": "https://thechaparralsale.netlify.app",
+          "use": "Sales landing",
+          "access": "login"
+        },
+        {
+          "name": "Mendline blueprint",
+          "for": "Unknown",
+          "host": "Netlify",
+          "url": "https://the-mendline-blueprint.netlify.app",
+          "use": "Check what this is",
+          "access": "public"
+        },
+        {
+          "name": "New Beginning strategy",
+          "for": "Unknown (Gift?)",
+          "host": "Netlify",
+          "url": "https://newbeginningstrategy.netlify.app",
+          "use": "Check what this is",
+          "access": "login"
+        }
+      ]
+    },
+    {
+      "name": "Career clients",
+      "tools": [
+        {
+          "name": "Michael Poggio",
+          "for": "Career",
+          "host": "Netlify",
+          "url": "https://poggio-career-command.netlify.app",
+          "use": "Career command",
+          "access": "public"
+        },
+        {
+          "name": "Tony Cali",
+          "for": "Career",
+          "host": "Netlify",
+          "url": "https://tony-cali-career-command.netlify.app",
+          "use": "Career command",
+          "access": "public"
+        },
+        {
+          "name": "Octavia Litwin",
+          "for": "Career",
+          "host": "Netlify",
+          "url": "https://becs-careerconsole-octavial.netlify.app",
+          "use": "Career console",
+          "access": "public"
+        },
+        {
+          "name": "Jason Nokes",
+          "for": "Career",
+          "host": "Netlify",
+          "url": "https://jasonnokescarrer.netlify.app",
+          "use": "Career page",
+          "access": "login"
+        },
+        {
+          "name": "Shavion",
+          "for": "Career",
+          "host": "Netlify",
+          "url": "https://shavioncareerbuilder.netlify.app",
+          "use": "Career builder",
+          "access": "login"
+        },
+        {
+          "name": "Travis W.",
+          "for": "Career",
+          "host": "Netlify",
+          "url": "https://travis-w-careertoolkit.netlify.app",
+          "use": "Career toolkit",
+          "access": "public"
+        },
+        {
+          "name": "Ryan K.",
+          "for": "Career",
+          "host": "Netlify",
+          "url": "https://ryankcareertool.netlify.app",
+          "use": "Career tool",
+          "access": "public"
+        },
+        {
+          "name": "Brandon Ellis Bynum",
+          "for": "Owner",
+          "host": "Netlify",
+          "url": "https://brandonellisbynum.netlify.app",
+          "use": "Your profile site",
+          "access": "public"
+        }
+      ]
+    },
+    {
+      "name": "Ventures and personal",
+      "tools": [
+        {
+          "name": "ME & THEM site",
+          "for": "ME & THEM",
+          "host": "Netlify",
+          "url": "https://meandthematter.com",
+          "use": "Book and media brand",
+          "access": "public"
+        },
+        {
+          "name": "ME & THEM book",
+          "for": "ME & THEM",
+          "host": "Netlify",
+          "url": "https://meandthem-book-d261cfc1.netlify.app",
+          "use": "Book site",
+          "access": "login"
+        },
+        {
+          "name": "M3 & TH3M content hub",
+          "for": "ME & THEM",
+          "host": "Vercel",
+          "url": "https://m3them-content-hub.vercel.app",
+          "use": "Content hub",
+          "access": "public"
+        },
+        {
+          "name": "4(FREQ) app",
+          "for": "4FREQ",
+          "host": "Lovable",
+          "url": "https://lovable.dev/projects/1e95d41d-9a3c-42d2-85b0-46b1e1b46528",
+          "use": "Habits and journal (editor)",
+          "access": "login"
+        },
+        {
+          "name": "4FREQ journal",
+          "for": "4FREQ",
+          "host": "Netlify",
+          "url": "https://4freq-journal.netlify.app",
+          "use": "Journal",
+          "access": "login"
+        },
+        {
+          "name": "4FREQ pricing tool",
+          "for": "4FREQ",
+          "host": "Netlify",
+          "url": "https://4freqpricingproducttool.netlify.app",
+          "use": "Pricing tool",
+          "access": "login"
+        },
+        {
+          "name": "TETHR beauty brand",
+          "for": "TETHR",
+          "host": "Netlify",
+          "url": "https://tethrbeautybrand.netlify.app",
+          "use": "Brand site",
+          "access": "login"
+        },
+        {
+          "name": "Lifestyle Architect",
+          "for": "Personal",
+          "host": "Lovable",
+          "url": "https://lovable.dev/projects/35eb590b-bc21-4f75-96b9-8c768465279d",
+          "use": "Daily habits (editor)",
+          "access": "login"
+        },
+        {
+          "name": "Daily Flourish (ELIYASOS)",
+          "for": "Personal",
+          "host": "Lovable",
+          "url": "https://lovable.dev/projects/4f40bcb1-70b4-47c5-baa2-23553663a3bc",
+          "use": "Personal daily OS (editor)",
+          "access": "login"
+        },
+        {
+          "name": "Budget Buddy",
+          "for": "Personal",
+          "host": "Lovable",
+          "url": "https://lovable.dev/projects/0ce20a2c-3465-4ccb-8030-45550721846b",
+          "use": "Personal finance (editor)",
+          "access": "login"
+        },
+        {
+          "name": "Life Console",
+          "for": "Personal",
+          "host": "Claude",
+          "url": "https://claude.ai/artifact/F3P2k13JnutMMiZG2AUCjS",
+          "use": "Life console (artifact)",
+          "access": "login"
+        }
+      ]
+    },
+    {
+      "name": "Notion hubs",
+      "tools": [
+        {
+          "name": "BECS OS Command Center",
+          "for": "BECS",
+          "host": "Notion",
+          "url": "https://app.notion.com/p/33f9c86eeaa281c2b6fbda333cc8681c",
+          "use": "Earlier BECS OS plan and trackers (reference)",
+          "access": "login"
+        },
+        {
+          "name": "BECS Service Catalog",
+          "for": "BECS",
+          "host": "Notion",
+          "url": "https://app.notion.com/p/3819c86eeaa28100a648d67082985237",
+          "use": "Custom OS catalog (operations clients)",
+          "access": "login"
+        },
+        {
+          "name": "BECS Client Onboarding Template",
+          "for": "BECS",
+          "host": "Notion",
+          "url": "https://app.notion.com/p/3829c86eeaa2815ca07ffaae2bb20b29",
+          "use": "Onboarding steps",
+          "access": "login"
+        }
+      ]
+    },
+    {
+      "name": "Unknown or unnamed sites (review)",
+      "tools": [
+        {
+          "name": "aquamarine-meringue-86a416",
+          "for": "Unknown",
+          "host": "Netlify",
+          "url": "https://aquamarine-meringue-86a416.netlify.app",
+          "use": "Random name; check and rename or retire",
+          "access": "dead"
+        },
+        {
+          "name": "sage-parfait-b618e2",
+          "for": "Unknown",
+          "host": "Netlify",
+          "url": "https://sage-parfait-b618e2.netlify.app",
+          "use": "Random name; check and rename or retire",
+          "access": "public"
+        },
+        {
+          "name": "luxury-travesseiro-449de2",
+          "for": "Unknown",
+          "host": "Netlify",
+          "url": "https://luxury-travesseiro-449de2.netlify.app",
+          "use": "Random name; check and rename or retire",
+          "access": "login"
+        },
+        {
+          "name": "project-n3px2",
+          "for": "Unknown",
+          "host": "Vercel",
+          "url": "https://project-n3px2.vercel.app",
+          "use": "Random name; check and rename or retire",
+          "access": "dead"
+        }
+      ]
+    }
+  ],
+  "checked": "2026-11-02"
+}

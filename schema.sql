@@ -1,0 +1,7 @@
+-- The database schema now lives in migrations/ (applied with wrangler's D1 migrations).
+--   migrations/0001_baseline.sql  the schema as it was live before the revamp
+--   migrations/0002_revamp.sql    optional projects.phase, activity_log.actor, indexes
+-- Apply them with:
+--   npx wrangler d1 migrations apply becs-os-core --local    (your computer)
+--   npx wrangler d1 migrations apply becs-os-core --remote   (the live database)
+-- This file is kept only as a pointer. Do not add SQL here.
