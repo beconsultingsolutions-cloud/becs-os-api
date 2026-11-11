@@ -33,4 +33,5 @@ SELECT (SELECT id FROM ventures WHERE slug = 'becs'), 'Import BECS-only Notion c
   'Source: the BECS Team Space page in Notion (internal BECS databases). Skip the "Archive - Nov 2026 cleanup" page; dead ventures and personal items stay out.'
 WHERE EXISTS (SELECT 1 FROM tasks WHERE id = 41 AND title LIKE '[S2.1][CC] Install WSL2%')
   AND EXISTS (SELECT 1 FROM ventures WHERE slug = 'becs')
-  AND NOT EXISTS (SELECT 1 FROM tasks WHERE title = 'Import BECS-only Notion content into BECS OS');
+  AND NOT EXISTS (SELECT 1 FROM tasks WHERE title = 'Import BECS-only Notion content into BECS OS'
+                    AND venture_id = (SELECT id FROM ventures WHERE slug = 'becs'));
