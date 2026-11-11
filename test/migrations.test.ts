@@ -70,7 +70,7 @@ describe('migrating the live database', () => {
   it('applies every migration in order and records them', async () => {
     await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
     const done = await all<{ name: string }>('SELECT name FROM d1_migrations ORDER BY id');
-    expect(done.map((m) => m.name)).toEqual(['0001_baseline.sql', '0002_revamp.sql', '0003_intakes.sql', '0003_milestones_client_log.sql', '0004_invoices.sql', '0005_back_of_house_tag.sql']);
+    expect(done.map((m) => m.name)).toEqual(['0001_baseline.sql', '0002_revamp.sql', '0003_intakes.sql', '0003_milestones_client_log.sql', '0004_invoices.sql', '0005_back_of_house_tag.sql', '0006_task_list_cleanup.sql']);
   });
 
   it('0005 tags infra-watch and security-sprint tasks as maintenance, and nothing else', async () => {
@@ -216,7 +216,7 @@ describe('migrating the live database', () => {
     const before = await all('SELECT * FROM projects ORDER BY id');
     await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
     expect(await all('SELECT * FROM projects ORDER BY id')).toEqual(before);
-    expect(await all('SELECT name FROM d1_migrations')).toHaveLength(6);
+    expect(await all('SELECT name FROM d1_migrations')).toHaveLength(7);
   });
 
   it('serves the migrated data through the API, and blocked deletes still count payments', async () => {
