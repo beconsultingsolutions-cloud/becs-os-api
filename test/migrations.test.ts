@@ -70,7 +70,31 @@ describe('migrating the live database', () => {
   it('applies every migration in order and records them', async () => {
     await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
     const done = await all<{ name: string }>('SELECT name FROM d1_migrations ORDER BY id');
-    expect(done.map((m) => m.name)).toEqual(['0001_baseline.sql', '0002_revamp.sql', '0003_intakes.sql', '0003_milestones_client_log.sql', '0004_invoices.sql']);
+    expect(done.map((m) => m.name)).toEqual(['0001_baseline.sql', '0002_revamp.sql', '0003_intakes.sql', '0003_milestones_client_log.sql', '0004_invoices.sql', '0005_back_of_house_tag.sql']);
+  });
+
+  it('0005 tags infra-watch and security-sprint tasks as maintenance, and nothing else', async () => {
+    await env.DB.prepare(
+      `INSERT INTO tasks (id, venture_id, title, filter_tag) VALUES
+         (60, 1, '[infra] gh:becs-os:dependabot 45 open alerts', 'systems'),
+         (61, 1, '[S1.4][CH+BB] Cloudflare: scoped token', 'systems'),
+         (62, 1, '[S0.1][BB] Install 1Password', NULL),
+         (63, 1, '[Sales] call back Dee', 'revenue'),
+         (64, 1, 'Send proposal to Corrado', 'revenue'),
+         (65, 1, 'Review infra costs', 'systems')`
+    ).run();
+    await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
+    const rows = await all<{ id: number; filter_tag: string | null }>('SELECT id, filter_tag FROM tasks WHERE id >= 60 ORDER BY id');
+    expect(rows).toEqual([
+      { id: 60, filter_tag: 'maintenance' },
+      { id: 61, filter_tag: 'maintenance' },
+      { id: 62, filter_tag: 'maintenance' },
+      { id: 63, filter_tag: 'revenue' },
+      { id: 64, filter_tag: 'revenue' },
+      { id: 65, filter_tag: 'systems' },
+    ]);
+    const others = await all<{ n: number }>("SELECT COUNT(*) AS n FROM tasks WHERE id < 60 AND filter_tag = 'maintenance'");
+    expect(others[0].n).toBe(0);
   });
 
   it('0003_intakes adds the intakes table the becs-intake Worker writes to', async () => {
@@ -192,7 +216,7 @@ describe('migrating the live database', () => {
     const before = await all('SELECT * FROM projects ORDER BY id');
     await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
     expect(await all('SELECT * FROM projects ORDER BY id')).toEqual(before);
-    expect(await all('SELECT name FROM d1_migrations')).toHaveLength(5);
+    expect(await all('SELECT name FROM d1_migrations')).toHaveLength(6);
   });
 
   it('serves the migrated data through the API, and blocked deletes still count payments', async () => {

@@ -153,6 +153,7 @@ Failed sign-ins are limited separately by the binding `AUTH_LIMITER`: 10 failure
     "paid_this_month_count": 1, "paid_this_month_cents": 280000,
     "due_within_14_days": [{"id":4,"label":"Balance at launch","amount_cents":280000,"status":"sent","due_date":"2026-11-13","project_id":10,"project_name":"..."}]
   },
+  "back_of_house": {"open_count": 36, "overdue_count": 9},
   "intakes": {
     "new_count": 2,
     "newest": [{"id":7,"form":"business-intake","business_name":"...","contact_name":"...","email":"...","client_id":21,"venture_id":1,"created_at":"2026-11-02 23:10:00"}]
@@ -168,6 +169,7 @@ Failed sign-ins are limited separately by the binding `AUTH_LIMITER`: 10 failure
 - Both counts follow `?today=` and `?venture_id=` exactly like the lists.
 - `active_projects` / `active_project_value_cents`: projects whose status is `planning` or `active`.
   The value is added up with SQLite `TOTAL()` and cast back to whole cents, so no stored data can make it fail.
+- Back-of-house tasks (`filter_tag` = `maintenance`) leave the dashboard the same way: they are not in `open_tasks`, `overdue`, `due_soon`, either count or `open_tasks_by_venture`. `back_of_house` counts them instead: `open_count` = not done, `overdue_count` = not done with `due_date` before today. Both follow `?today=` and `?venture_id=`.
 - Closed clients leave the dashboard. A task whose project belongs to a client at stage `closed` is left out of `open_tasks`, `overdue`, `due_soon`, both counts and `open_tasks_by_venture`, and such a project is left out of `active_projects` and its value. Tasks with no project, and projects with no client, always count. `client_pipeline` still reports every stage, `closed` included; the console's Overview hides the Closed bar and the closed clients' milestones. `money` is not filtered: an unpaid invoice from a closed client is still owed.
 - With `?venture_id=`, every figure is limited to that venture (`open_tasks_by_venture` then has one row).
 - `money`: invoices. Open = `unpaid`, `sent` or `partial`. `outstanding_*` = all open; `late_*` = open with `due_date` before today; `paid_this_month_*` = `paid` with `paid_at` on or after the 1st of today's month; `due_within_14_days` = open with a due date up to today + 14 days (late ones included), soonest first, max 25. Invoices have no venture of their own: `?venture_id=` filters them through their project.
@@ -217,7 +219,7 @@ Dates are `YYYY-MM-DD`. Timestamps are UTC text. Money is integer cents. Unknown
 | `title` | required, 1..300 chars |
 | `status` | `todo` (default), `doing`, `done` |
 | `priority` | integer 1 (high), 2 (medium), 3 (low, default) |
-| `filter_tag` | optional: `revenue`, `systems`, `brand`, `workload`. Why the task matters. |
+| `filter_tag` | optional: `revenue`, `systems`, `brand`, `workload`, `maintenance`. Why the task matters. `maintenance` means back of house (tech upkeep: infra checks, security work); those tasks live on the Back of house screen, not the dashboard. |
 | `due_date` | optional date |
 | `completed_at` | set by the server: stamped when status becomes `done`, cleared when it leaves `done`. Not writable. |
 | `notes` | optional, up to 5000 chars |
@@ -291,7 +293,8 @@ Every create, update and delete writes one row: `entity_type`, `entity_id`, `act
 - On load it calls `GET /api/me` with the browser's cookies. `200` means signed in through Access.
   `401` shows a key box as a fallback; the key is kept in `sessionStorage` for that tab only and sent as a Bearer header.
 - No demo data. If the API cannot be reached the console says so.
-- Screens: Overview, Intakes, Clients, Projects, Tasks, Money, Tools and Keys (Tools and Keys only for `master` and `user`).
+- Screens: Overview, Intakes, Clients, Projects, Tasks, Money, Back of house, Tools and Keys (Tools and Keys only for `master` and `user`).
+- Back of house: open `maintenance` tasks grouped Overdue / This week / Later or no date, with check-off, edit, Add maintenance task (tag preset) and a Show done toggle. The Overview shows only a Back of house line with `back_of_house` counts and a link. The Tasks screen still lists every task, these included.
 - Intakes: filter New / In progress / Closed / All; change status inline; open one to read the answers (shown as text only), link the lead or move the venture; delete (for spam and tests). The Overview shows a New intakes tile and the newest new intakes.
 - A venture switcher (All ventures, or one) filters every screen.
 - Create, edit and delete on clients, projects and tasks.
