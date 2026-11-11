@@ -1419,12 +1419,18 @@ const overview = {
     const v = ventureParam();
     const dashScopes = ['tasks:read', 'clients:read', 'projects:read', 'ventures:read'];
     const missing = dashScopes.filter(s => !can(s));
-    const [dash, activity, milestones, projects] = await Promise.all([
+    const [dash, activity, milestones, allProjects, clients] = await Promise.all([
       missing.length ? Promise.resolve({ __missing: missing }) : api('GET', '/dashboard' + qs({ ...v, today: today() })).catch(e => { if (e.status === 401) throw e; return { __error: e }; }),
       maybe('/activity', { limit: ACTIVITY_FETCH }, isAdmin() || can('activity:read') ? null : 'activity:read'),
       maybeAll('/milestones', {}, 'projects:read'),
-      maybeAll('/projects', v, 'projects:read')
+      maybeAll('/projects', v, 'projects:read'),
+      maybeAll('/clients', {}, 'clients:read')
     ]);
+    /* A closed client's work leaves the Overview (SPEC "Dashboard shape"): drop their projects, so their milestones go too.
+       Without the full client list (no clients:read, it failed, or it stopped at LIST_CEILING) we can't tell
+       which clients are closed, so the milestones block is hidden (projects = null) rather than shown unfiltered. */
+    const closed = clients && !clients.partial ? new Set(clients.filter(c => c.stage === 'closed').map(c => c.id)) : null;
+    const projects = allProjects && closed ? allProjects.filter(p => !closed.has(p.client_id)) : null;
     return { dash, activity, milestones, projects };
   },
   draw({ dash, activity, milestones, projects }) {
@@ -1474,7 +1480,8 @@ const overview = {
         ? [h('ul', { class: 'rows' }, items.map(dashRow)), more(items.length, total, which)]
         : h('div', { class: 'empty' }, h('b', {}, emptyTitle), emptyText));
 
-      const stages = STAGES.map(([k, l]) => [k, l, ((d.client_pipeline || []).find(s => s.stage === k) || {}).n || 0]);
+      /* Closed clients are finished business: the pipeline shows open stages only. The Clients screen still filters by Closed. */
+      const stages = STAGES.filter(([k]) => k !== 'closed').map(([k, l]) => [k, l, ((d.client_pipeline || []).find(s => s.stage === k) || {}).n || 0]);
       const maxStage = Math.max(1, ...stages.map(s => s[2]));
       const byV = d.open_tasks_by_venture || [];
       const maxV = Math.max(1, ...byV.map(x => x.open_tasks || 0));

@@ -604,26 +604,34 @@ async function dashboard(env: Env, url: URL): Promise<Response> {
   const bind = ventureId ? [ventureId] : [];
   const prep = (sql: string, ...first: unknown[]) => env.DB.prepare(sql).bind(...first, ...bind);
 
+  // Work for a closed client leaves the dashboard: a task whose project belongs to a
+  // client at stage 'closed', and that project itself. Money is not filtered: an
+  // unpaid invoice from a closed client is still owed.
+  const liveTask = (col: string) =>
+    ` AND NOT EXISTS (SELECT 1 FROM projects cp JOIN clients cc ON cc.id = cp.client_id
+       WHERE cp.id = ${col} AND cc.stage = 'closed')`;
+  const tLive = liveTask('tasks.project_id');
+
   // The overdue and due-soon lists stop at 25 rows. overdue_count and due_soon_count
   // are the real totals, so the console can say "showing the 25 oldest of 31".
   const [open, overdue, dueSoon, byVenture, pipeline, projects, overdueCount, dueSoonCount] = await env.DB.batch([
-    prep(`SELECT COUNT(*) AS n FROM tasks WHERE status != 'done'${and}`),
+    prep(`SELECT COUNT(*) AS n FROM tasks WHERE status != 'done'${tLive}${and}`),
     prep(
       `SELECT id, title, due_date, priority, venture_id FROM tasks
-       WHERE status != 'done' AND due_date IS NOT NULL AND due_date < ?${and}
+       WHERE status != 'done' AND due_date IS NOT NULL AND due_date < ?${tLive}${and}
        ORDER BY due_date, priority, id LIMIT 25`,
       today
     ),
     prep(
       `SELECT id, title, due_date, priority, venture_id FROM tasks
-       WHERE status != 'done' AND due_date BETWEEN ? AND ?${and}
+       WHERE status != 'done' AND due_date BETWEEN ? AND ?${tLive}${and}
        ORDER BY due_date, priority, id LIMIT 25`,
       today,
       soonEnd
     ),
     prep(
       `SELECT v.id AS venture_id, v.slug, v.name, COUNT(t.id) AS open_tasks
-       FROM ventures v LEFT JOIN tasks t ON t.venture_id = v.id AND t.status != 'done'
+       FROM ventures v LEFT JOIN tasks t ON t.venture_id = v.id AND t.status != 'done'${liveTask('t.project_id')}
        ${ventureId ? 'WHERE v.id = ?' : ''}
        GROUP BY v.id ORDER BY open_tasks DESC, v.id`
     ),
@@ -637,14 +645,15 @@ async function dashboard(env: Env, url: URL): Promise<Response> {
       // TOTAL() adds up as a decimal number, so it can never overflow and crash
       // the dashboard (SUM() can, on huge values). CAST turns it back into whole cents.
       `SELECT COUNT(*) AS n, CAST(TOTAL(value_cents) AS INTEGER) AS cents FROM projects
-       WHERE status IN ('planning', 'active')${and}`
+       WHERE status IN ('planning', 'active')
+         AND NOT EXISTS (SELECT 1 FROM clients cc WHERE cc.id = projects.client_id AND cc.stage = 'closed')${and}`
     ),
     // Same conditions as the two lists above, without the 25-row cap.
     prep(
-      `SELECT COUNT(*) AS n FROM tasks WHERE status != 'done' AND due_date IS NOT NULL AND due_date < ?${and}`,
+      `SELECT COUNT(*) AS n FROM tasks WHERE status != 'done' AND due_date IS NOT NULL AND due_date < ?${tLive}${and}`,
       today
     ),
-    prep(`SELECT COUNT(*) AS n FROM tasks WHERE status != 'done' AND due_date BETWEEN ? AND ?${and}`, today, soonEnd),
+    prep(`SELECT COUNT(*) AS n FROM tasks WHERE status != 'done' AND due_date BETWEEN ? AND ?${tLive}${and}`, today, soonEnd),
   ]);
 
   // Money (invoices). "Late" = due date passed and still open (unpaid, sent, partial).

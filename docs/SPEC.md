@@ -168,6 +168,7 @@ Failed sign-ins are limited separately by the binding `AUTH_LIMITER`: 10 failure
 - Both counts follow `?today=` and `?venture_id=` exactly like the lists.
 - `active_projects` / `active_project_value_cents`: projects whose status is `planning` or `active`.
   The value is added up with SQLite `TOTAL()` and cast back to whole cents, so no stored data can make it fail.
+- Closed clients leave the dashboard. A task whose project belongs to a client at stage `closed` is left out of `open_tasks`, `overdue`, `due_soon`, both counts and `open_tasks_by_venture`, and such a project is left out of `active_projects` and its value. Tasks with no project, and projects with no client, always count. `client_pipeline` still reports every stage, `closed` included; the console's Overview hides the Closed bar and the closed clients' milestones. `money` is not filtered: an unpaid invoice from a closed client is still owed.
 - With `?venture_id=`, every figure is limited to that venture (`open_tasks_by_venture` then has one row).
 - `money`: invoices. Open = `unpaid`, `sent` or `partial`. `outstanding_*` = all open; `late_*` = open with `due_date` before today; `paid_this_month_*` = `paid` with `paid_at` on or after the 1st of today's month; `due_within_14_days` = open with a due date up to today + 14 days (late ones included), soonest first, max 25. Invoices have no venture of their own: `?venture_id=` filters them through their project.
 - `intakes`: `new_count` = intakes with status `new`; `newest` = the 10 newest of those. Follows `?venture_id=`.
