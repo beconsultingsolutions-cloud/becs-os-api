@@ -419,3 +419,60 @@ describe('dashboard counts beyond the 25-row lists', () => {
     expect(v2.overdue_count).toBe(2);
   });
 });
+
+describe('dashboard leaves out work for closed clients', () => {
+  async function seedClients() {
+    const closed = (await create('clients', { venture_id: 1, name: 'Closed client', stage: 'closed' })).id;
+    const paused = (await create('clients', { venture_id: 1, name: 'Paused client', stage: 'paused' })).id;
+    const pClosed = (await create('projects', { venture_id: 1, client_id: closed, name: 'Closed work', status: 'active', value_cents: 500 })).id;
+    const pPaused = (await create('projects', { venture_id: 1, client_id: paused, name: 'Paused work', status: 'active', value_cents: 70 })).id;
+    const pNoClient = (await create('projects', { venture_id: 1, name: 'In-house', status: 'planning', value_cents: 30 })).id;
+    const t = (title: string, due: number, project_id: number | null) =>
+      create('tasks', { venture_id: 1, title, due_date: day(due), project_id });
+    const ids = {
+      closedLate: (await t('closed late', -2, pClosed)).id,
+      closedSoon: (await t('closed soon', 2, pClosed)).id,
+      pausedLate: (await t('paused late', -1, pPaused)).id,
+      noClientSoon: (await t('no client soon', 3, pNoClient)).id,
+      looseLate: (await t('no project late', -3, null)).id,
+    };
+    return { ids, closed, pClosed };
+  }
+
+  it('drops a closed client\'s tasks and project from every figure', async () => {
+    const { ids } = await seedClients();
+    const d = (await get('/api/dashboard')).body.data;
+    const titles = (rows: { id: number }[]) => rows.map((r) => r.id);
+    expect(titles(d.overdue)).toEqual([ids.looseLate, ids.pausedLate]);
+    expect(d.overdue_count).toBe(2);
+    expect(titles(d.due_soon)).toEqual([ids.noClientSoon]);
+    expect(d.due_soon_count).toBe(1);
+    expect(d.open_tasks).toBe(3);
+    expect(d.open_tasks_by_venture.find((v: { venture_id: number }) => v.venture_id === 1).open_tasks).toBe(3);
+    expect(d.active_projects).toBe(2);
+    expect(d.active_project_value_cents).toBe(100);
+  });
+
+  it('still reports closed clients in client_pipeline', async () => {
+    await seedClients();
+    const d = (await get('/api/dashboard')).body.data;
+    expect(d.client_pipeline).toEqual(expect.arrayContaining([{ stage: 'closed', n: 1 }, { stage: 'paused', n: 1 }]));
+  });
+
+  it('brings the work back when the client is reopened', async () => {
+    const { closed } = await seedClients();
+    await env.DB.prepare("UPDATE clients SET stage = 'active' WHERE id = ?").bind(closed).run();
+    const d = (await get('/api/dashboard')).body.data;
+    expect(d.overdue_count).toBe(3);
+    expect(d.due_soon_count).toBe(2);
+    expect(d.active_projects).toBe(3);
+    expect(d.active_project_value_cents).toBe(600);
+  });
+
+  it('follows ?venture_id= as well', async () => {
+    await seedClients();
+    const d = (await get('/api/dashboard?venture_id=1')).body.data;
+    expect(d.open_tasks).toBe(3);
+    expect(d.active_projects).toBe(2);
+  });
+});
