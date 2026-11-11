@@ -92,6 +92,7 @@ describe('dashboard across all ventures', () => {
         'overdue_count',
         'due_soon_count',
         'intakes',
+        'back_of_house',
       ].sort()
     );
 
@@ -226,6 +227,7 @@ describe('dashboard for one venture', () => {
         paid_this_month_count: 0, paid_this_month_cents: 0, due_within_14_days: [],
       },
       intakes: { new_count: 0, newest: [] },
+      back_of_house: { open_count: 0, overdue_count: 0 },
     });
   });
 
@@ -474,5 +476,52 @@ describe('dashboard leaves out work for closed clients', () => {
     const d = (await get('/api/dashboard?venture_id=1')).body.data;
     expect(d.open_tasks).toBe(3);
     expect(d.active_projects).toBe(2);
+  });
+});
+
+describe('dashboard keeps back-of-house (maintenance) tasks off the main lists', () => {
+  async function seedBoh() {
+    const t = (venture_id: number, title: string, due: number | null, extra: Record<string, unknown> = {}) =>
+      create('tasks', { venture_id, title, due_date: due === null ? null : day(due), ...extra });
+    return {
+      bizLate: (await t(1, 'biz late', -1, { filter_tag: 'revenue' })).id,
+      bizSoon: (await t(1, 'biz soon', 2)).id,
+      bohLate: (await t(1, 'boh late', -4, { filter_tag: 'maintenance' })).id,
+      bohSoon: (await t(1, 'boh soon', 1, { filter_tag: 'maintenance' })).id,
+      bohNoDate: (await t(2, 'boh no date', null, { filter_tag: 'maintenance' })).id,
+      bohDone: (await t(1, 'boh done', -2, { filter_tag: 'maintenance', status: 'done' })).id,
+    };
+  }
+
+  it('leaves maintenance tasks out of every task figure and counts them in back_of_house', async () => {
+    const ids = await seedBoh();
+    const d = (await get('/api/dashboard')).body.data;
+    expect(d.overdue.map((r: { id: number }) => r.id)).toEqual([ids.bizLate]);
+    expect(d.overdue_count).toBe(1);
+    expect(d.due_soon.map((r: { id: number }) => r.id)).toEqual([ids.bizSoon]);
+    expect(d.due_soon_count).toBe(1);
+    expect(d.open_tasks).toBe(2);
+    const byV = Object.fromEntries(d.open_tasks_by_venture.map((v: { venture_id: number; open_tasks: number }) => [v.venture_id, v.open_tasks]));
+    expect(byV[1]).toBe(2);
+    expect(byV[2]).toBe(0);
+    expect(d.back_of_house).toEqual({ open_count: 3, overdue_count: 1 });
+  });
+
+  it('is zero on an empty database', async () => {
+    expect((await get('/api/dashboard')).body.data.back_of_house).toEqual({ open_count: 0, overdue_count: 0 });
+  });
+
+  it('follows ?venture_id= and ?today=', async () => {
+    await seedBoh();
+    expect((await get('/api/dashboard?venture_id=2')).body.data.back_of_house).toEqual({ open_count: 1, overdue_count: 0 });
+    // Seen from tomorrow, venture 1's task due 4 days ago is still the only late one; the one due tomorrow is due "today", not late.
+    expect((await get(`/api/dashboard?venture_id=1&today=${day(1)}`)).body.data.back_of_house).toEqual({ open_count: 2, overdue_count: 1 });
+  });
+
+  it('lets the tasks list filter by the maintenance tag (what the Back of house screen loads)', async () => {
+    const ids = await seedBoh();
+    const r = await get('/api/tasks?filter_tag=maintenance&status=todo');
+    expect(r.status).toBe(200);
+    expect(r.body.data.map((x: { id: number }) => x.id).sort((a: number, b: number) => a - b)).toEqual([ids.bohLate, ids.bohSoon, ids.bohNoDate].sort((a, b) => a - b));
   });
 });

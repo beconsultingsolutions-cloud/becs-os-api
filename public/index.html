@@ -31,7 +31,7 @@ One file, no build step, no outside scripts. Open it in any editor.
        6  Shared pieces: toast, confirm box, error panels
        7  The form dialog used for every create / edit
        8  Record forms: client, project, task
-       9  Screens: Overview, Clients, Projects, Tasks, Keys
+       9  Screens: Overview, Clients, Projects, Tasks, Back of house, Keys
       10  Router and start-up
 
 Contract : docs/SPEC.md is the source of truth for paths, fields and
@@ -411,6 +411,7 @@ dialog::backdrop{background:rgba(45,42,95,.45);-webkit-backdrop-filter:blur(3px)
   <symbol id="i-tools" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 17.5h7M17.5 14v7"/></symbol>
   <symbol id="i-intakes" viewBox="0 0 24 24"><path d="M3 13l2.5-7.5h13L21 13v5.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/><path d="M3 13h5l1.5 2.5h5L16 13h5"/></symbol>
   <symbol id="i-money" viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9.5v5M18 9.5v5"/></symbol>
+  <symbol id="i-boh" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3.5 17.3a1.8 1.8 0 0 0 2.6 2.6l5.8-5.8a4 4 0 0 0 5.2-5.4l-2.6 2.6-2.4-.4-.4-2.4z"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></symbol>
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
   <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></symbol>
@@ -458,6 +459,7 @@ dialog::backdrop{background:rgba(45,42,95,.45);-webkit-backdrop-filter:blur(3px)
       <a href="#/projects" data-r="projects"><svg class="ico" aria-hidden="true"><use href="#i-projects"/></svg>Projects</a>
       <a href="#/tasks" data-r="tasks"><svg class="ico" aria-hidden="true"><use href="#i-tasks"/></svg>Tasks</a>
       <a href="#/money" data-r="money"><svg class="ico" aria-hidden="true"><use href="#i-money"/></svg>Money</a>
+      <a href="#/backofhouse" data-r="backofhouse"><svg class="ico" aria-hidden="true"><use href="#i-boh"/></svg>Back of house</a>
       <a href="#/tools" data-r="tools" id="navTools" hidden><svg class="ico" aria-hidden="true"><use href="#i-tools"/></svg>Tools</a>
       <a href="#/keys" data-r="keys" id="navKeys" hidden><svg class="ico" aria-hidden="true"><use href="#i-keys"/></svg>Keys</a>
     </nav>
@@ -500,7 +502,7 @@ const STAGES = [['lead', 'Lead'], ['contacted', 'Contacted'], ['proposal', 'Prop
 const PROJECT_STATUSES = [['planning', 'Planning'], ['active', 'Active'], ['paused', 'Paused'], ['done', 'Done'], ['cancelled', 'Cancelled']];
 const TASK_STATUSES = [['todo', 'To do'], ['doing', 'Doing'], ['done', 'Done']];
 const PRIORITIES = [[1, 'High'], [2, 'Med'], [3, 'Low']];      // integer in the API
-const TAGS = [['revenue', 'Revenue'], ['systems', 'Systems'], ['brand', 'Brand'], ['workload', 'Workload']];
+const TAGS = [['revenue', 'Revenue'], ['systems', 'Systems'], ['brand', 'Brand'], ['workload', 'Workload'], ['maintenance', 'Back of house']];
 const PHASES = [['plan', 'Plan'], ['evolve', 'Evolve'], ['succeed', 'Succeed']];
 const PHASE_VENTURE_SLUG = 'becs';             // P.E.S. phase is only offered for this venture
 
@@ -1496,6 +1498,7 @@ const overview = {
           milestoneBlock(milestones, projects)),
         h('div', {},
           intakeBlock(d.intakes),
+          bohBlock(d.back_of_house),
           h('section', { class: 'block' }, h('h2', { class: 'h2' }, 'Client pipeline'),
             h('div', { class: 'panel' }, h('ul', { class: 'bars' }, stages.map(([k, l, n]) => h('li', {},
               h('a', { href: '#/clients', onclick: () => { clientsScreen.stage = k; } },
@@ -1512,6 +1515,15 @@ const overview = {
     return parts;
   }
 };
+/* Back of house on the Overview: one line with the counts and a link, not the tasks themselves. */
+function bohBlock(b) {
+  if (!b) return null;   // older server without back_of_house
+  const late = b.overdue_count || 0, open = b.open_count || 0;
+  return h('section', { class: 'block' }, h('h2', { class: 'h2' }, 'Back of house', h('span', { class: 'mono' }, String(open))),
+    h('div', { class: 'panel' }, h('div', { class: 'more' },
+      h('span', { class: late ? 'late' : null }, open ? `${open} maintenance task${open === 1 ? '' : 's'} open${late ? ` · ${late} overdue` : ''}.` : 'No maintenance waiting.'),
+      h('a', { class: 'btn sm', href: '#/backofhouse' }, 'Open', icon('next')))));
+}
 /* Milestones that are not done and due within 14 days (or already late), for the projects in view. */
 function milestoneBlock(milestones, projects) {
   if (!milestones || !projects) return null;   // no permission: hide quietly
@@ -2118,7 +2130,53 @@ const toolsScreen = {
 /* =====================================================================
    10  ROUTER AND START-UP
    ===================================================================== */
-const SCREENS = { overview, intakes: intakesScreen, clients: clientsScreen, projects: projectsScreen, tasks: tasksScreen, money: moneyScreen, tools: toolsScreen, keys: keysScreen };
+/* ---------- Back of house: tech upkeep (tasks tagged 'maintenance'), kept off the Overview ---------- */
+const bohScreen = {
+  title: 'Back of house', showDone: false,
+  async load() {
+    const v = ventureParam(), me = bohScreen;
+    const statuses = me.showDone ? ['todo', 'doing', 'done'] : ['todo', 'doing'];
+    const lists = await Promise.all(statuses.map(s => needAll('/tasks', { ...v, filter_tag: 'maintenance', status: s })));
+    const tasks = lists.flat();
+    if (lists.some(l => l.partial)) tasks.partial = true;
+    return { tasks };
+  },
+  draw({ tasks }) {
+    const me = bohScreen, t0 = today();
+    const inWeek = d => dayDiff(d) >= 0 && dayDiff(d) <= 7;   /* same window as the Overview's "Due in 7 days" */
+    const row = t => h('li', { class: t.status === 'done' ? 'is-done' : null },
+      taskCheck(t),
+      h('div', { class: 'grow' },
+        h('button', { class: 'linkbtn', type: 'button', 'data-fk': 'bt-' + t.id, onclick: e => editById('tasks', t.id, e.currentTarget) }, t.title),
+        h('div', { class: 'tmeta' }, ventTag(t.venture_id), t.status === 'doing' ? h('span', {}, 'In progress') : null,
+          h('span', { class: t.status !== 'done' && dayDiff(t.due_date) < 0 ? 'late' : null }, dueText(t.due_date)))),
+      h('span', { class: 'pill p' + (t.priority || 3) }, prioLabel(t.priority)));
+    const byDue = (a, b) => (a.due_date || '9999').localeCompare(b.due_date || '9999') || (a.priority || 3) - (b.priority || 3) || a.id - b.id;
+    const open = tasks.filter(t => t.status !== 'done').sort(byDue);
+    const groups = [
+      ['Overdue', open.filter(t => t.due_date && t.due_date < t0), 'Nothing overdue.'],
+      ['This week', open.filter(t => t.due_date && inWeek(t.due_date)), 'Nothing due this week.'],
+      ['Later or no date', open.filter(t => !t.due_date || dayDiff(t.due_date) > 7), 'Nothing further out.']
+    ];
+    if (me.showDone) groups.push(['Done', tasks.filter(t => t.status === 'done').sort((a, b) => String(b.completed_at || '').localeCompare(String(a.completed_at || ''))), 'Nothing done yet.']);
+    return [
+      h('section', { class: 'deep' },
+        h('div', {},
+          h('div', { class: 'eyebrow lime' }, 'Back of house · ' + scopeLabel()),
+          h('h1', { class: 'h1', style: 'margin-top:8px' }, 'Tech upkeep'),
+          h('p', {}, 'Infrastructure checks, security work and other maintenance. Kept here so the Overview stays on clients and revenue.')),
+        h('div', { class: 'actions' },
+          can('tasks:write') ? h('button', { class: 'btn primary', type: 'button', onclick: () => taskForm(null, { filter_tag: 'maintenance' }) }, icon('plus'), 'Add maintenance task') : null,
+          h('button', { class: 'btn light', type: 'button', 'aria-pressed': String(me.showDone), onclick: () => { me.showDone = !me.showDone; refresh(); } }, me.showDone ? 'Hide done' : 'Show done'))),
+      partialNotice([['maintenance tasks', tasks]]),
+      ...groups.map(([title, items, empty]) => h('section', { class: 'block' },
+        h('h2', { class: 'h2' }, title, h('span', { class: 'mono' }, String(items.length))),
+        h('div', { class: 'panel' }, items.length ? h('ul', { class: 'rows' }, items.map(row)) : h('div', { class: 'empty' }, h('b', {}, empty)))))
+    ];
+  }
+};
+
+const SCREENS = { overview, intakes: intakesScreen, clients: clientsScreen, projects: projectsScreen, tasks: tasksScreen, money: moneyScreen, backofhouse: bohScreen, tools: toolsScreen, keys: keysScreen };
 let renderToken = 0, current = null, cache = null;
 const OWNER_ONLY = new Set(['keys', 'tools']);
 const routeName = () => { const r = location.hash.replace(/^#\/?/, ''); return SCREENS[r] && (!OWNER_ONLY.has(r) || isAdmin()) ? r : 'overview'; };
@@ -2140,8 +2198,8 @@ async function route() {
   } catch (e) {
     if (token !== renderToken || e.status === 401) return;
     cache = null;
-    const what = { overview: 'the overview', clients: 'clients', projects: 'projects', tasks: 'tasks', money: 'invoices', tools: 'the tools list', keys: 'app keys' }[name];
-    const scope = { clients: 'clients:read', projects: 'projects:read', tasks: 'tasks:read', money: 'projects:read' }[name];
+    const what = { overview: 'the overview', clients: 'clients', projects: 'projects', tasks: 'tasks', backofhouse: 'maintenance tasks', money: 'invoices', tools: 'the tools list', keys: 'app keys' }[name];
+    const scope = { clients: 'clients:read', projects: 'projects:read', tasks: 'tasks:read', backofhouse: 'tasks:read', money: 'projects:read' }[name];
     $('#app').replaceChildren(shead('BECS OS', screen.title, null), errorNotice(e, what, scope));
   }
   if (changed) $('#app').focus({ preventScroll: true });

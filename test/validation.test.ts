@@ -310,7 +310,7 @@ describe('tasks', () => {
   textRule('tasks', 'title', 300, true);
   textRule('tasks', 'notes', 5000, false);
   enumRule('tasks', 'status', ['todo', 'doing', 'done'], 'todo', 'blocked');
-  enumRule('tasks', 'filter_tag', ['revenue', 'systems', 'brand', 'workload'], null, 'fun');
+  enumRule('tasks', 'filter_tag', ['revenue', 'systems', 'brand', 'workload', 'maintenance'], null, 'fun');
   priorityRule('tasks');
   dateRule('tasks', 'due_date');
 });

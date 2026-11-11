@@ -607,10 +607,13 @@ async function dashboard(env: Env, url: URL): Promise<Response> {
   // Work for a closed client leaves the dashboard: a task whose project belongs to a
   // client at stage 'closed', and that project itself. Money is not filtered: an
   // unpaid invoice from a closed client is still owed.
-  const liveTask = (col: string) =>
-    ` AND NOT EXISTS (SELECT 1 FROM projects cp JOIN clients cc ON cc.id = cp.client_id
-       WHERE cp.id = ${col} AND cc.stage = 'closed')`;
-  const tLive = liveTask('tasks.project_id');
+  // Back-of-house tasks (filter_tag 'maintenance': tech upkeep) live on their own
+  // screen; the dashboard only reports how many there are (back_of_house below).
+  const liveTask = (t: string) =>
+    ` AND (${t}.filter_tag IS NULL OR ${t}.filter_tag != 'maintenance')
+      AND NOT EXISTS (SELECT 1 FROM projects cp JOIN clients cc ON cc.id = cp.client_id
+       WHERE cp.id = ${t}.project_id AND cc.stage = 'closed')`;
+  const tLive = liveTask('tasks');
 
   // The overdue and due-soon lists stop at 25 rows. overdue_count and due_soon_count
   // are the real totals, so the console can say "showing the 25 oldest of 31".
@@ -631,7 +634,7 @@ async function dashboard(env: Env, url: URL): Promise<Response> {
     ),
     prep(
       `SELECT v.id AS venture_id, v.slug, v.name, COUNT(t.id) AS open_tasks
-       FROM ventures v LEFT JOIN tasks t ON t.venture_id = v.id AND t.status != 'done'${liveTask('t.project_id')}
+       FROM ventures v LEFT JOIN tasks t ON t.venture_id = v.id AND t.status != 'done'${liveTask('t')}
        ${ventureId ? 'WHERE v.id = ?' : ''}
        GROUP BY v.id ORDER BY open_tasks DESC, v.id`
     ),
@@ -677,14 +680,18 @@ async function dashboard(env: Env, url: URL): Promise<Response> {
   ]);
   const money = (r: D1Result) => r.results[0] as { n: number; cents: number };
 
-  // Intakes waiting for the owner (status 'new'), newest first.
-  const [newIntakes, newIntakeList] = await env.DB.batch([
+  // Intakes waiting for the owner (status 'new'), newest first. Plus the back-of-house
+  // counts: open maintenance tasks, and how many of those are overdue.
+  const BOH = "status != 'done' AND filter_tag = 'maintenance'";
+  const [newIntakes, newIntakeList, bohOpen, bohLate] = await env.DB.batch([
     prep("SELECT COUNT(*) AS n FROM intakes WHERE status = 'new'" + and),
     prep(
       "SELECT id, form, business_name, contact_name, email, client_id, venture_id, created_at FROM intakes WHERE status = 'new'" +
         and +
         ' ORDER BY id DESC LIMIT 10'
     ),
+    prep(`SELECT COUNT(*) AS n FROM tasks WHERE ${BOH}${and}`),
+    prep(`SELECT COUNT(*) AS n FROM tasks WHERE ${BOH} AND due_date IS NOT NULL AND due_date < ?${and}`, today),
   ]);
 
   const proj = projects.results[0] as { n: number; cents: number };
@@ -710,6 +717,10 @@ async function dashboard(env: Env, url: URL): Promise<Response> {
     intakes: {
       new_count: (newIntakes.results[0] as { n: number }).n,
       newest: newIntakeList.results, // status 'new', at most 10
+    },
+    back_of_house: {
+      open_count: (bohOpen.results[0] as { n: number }).n,
+      overdue_count: (bohLate.results[0] as { n: number }).n,
     },
   });
 }

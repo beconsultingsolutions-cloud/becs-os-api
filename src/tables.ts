@@ -138,7 +138,8 @@ export const TABLES: Record<TableName, TableDef> = {
       title: { type: 'text', max: 300, required: true },
       status: { type: 'enum', values: ['todo', 'doing', 'done'] },
       priority: PRIORITY,
-      filter_tag: { type: 'enum', values: ['revenue', 'systems', 'brand', 'workload'], optional: true },
+      // 'maintenance' = back of house: tech upkeep (infra checks, security work). Kept off the dashboard.
+      filter_tag: { type: 'enum', values: ['revenue', 'systems', 'brand', 'workload', 'maintenance'], optional: true },
       due_date: { type: 'date' },
       notes: NOTES,
     },
