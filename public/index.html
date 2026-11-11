@@ -1426,9 +1426,11 @@ const overview = {
       maybeAll('/projects', v, 'projects:read'),
       maybeAll('/clients', {}, 'clients:read')
     ]);
-    /* A closed client's work leaves the Overview (SPEC "Dashboard shape"): drop their projects, so their milestones go too. */
-    const closed = new Set((clients || []).filter(c => c.stage === 'closed').map(c => c.id));
-    const projects = allProjects && allProjects.filter(p => !closed.has(p.client_id));
+    /* A closed client's work leaves the Overview (SPEC "Dashboard shape"): drop their projects, so their milestones go too.
+       Without the client list (no clients:read, or it failed) we can't tell which clients are closed, so the
+       milestones block is hidden (projects = null) rather than shown unfiltered. */
+    const closed = clients ? new Set(clients.filter(c => c.stage === 'closed').map(c => c.id)) : null;
+    const projects = allProjects && closed ? allProjects.filter(p => !closed.has(p.client_id)) : null;
     return { dash, activity, milestones, projects };
   },
   draw({ dash, activity, milestones, projects }) {
